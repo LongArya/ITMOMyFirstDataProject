@@ -1,0 +1,2 @@
+architecture: "resnet18"
+use_pretrained: true
