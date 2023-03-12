@@ -1,6 +1,6 @@
 import os
 
-SCRIPT_DIR = os.path.abspath(__file__)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 WORKSPACE_DIR = os.path.dirname(SCRIPT_DIR)
 REPO_DIR = os.path.dirname(WORKSPACE_DIR)
 DATA_ROOT = os.path.join(REPO_DIR, "Data")
