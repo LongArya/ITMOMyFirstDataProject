@@ -1,6 +1,10 @@
 import pandas as pd
 import os
 from typing import List
+from general.datasets.read_meta_dataset import ReadMetaDataset
+from typing import Dict, Any
+import cv2
+import numpy as np
 
 ZERO_BBOX = "[0 0 0 0]"
 
@@ -17,6 +21,38 @@ class NdrczcMarkupTable(pd.DataFrame):
     @property
     def bbox() -> pd.Series:
         ...
+
+
+class NdrczcDataset(ReadMetaDataset):
+    def __init__(self, txt_meta_path: str) -> None:
+        self.meta_table = read_ndrczc_markup_in_train_ready_format(txt_meta_path)
+
+    def read_meta(self, index) -> Any:
+        row = self.meta_table.iloc[index]
+        return {
+            "bbox": parse_xyxy_bbox_from_string(row["bbox"]),
+            "image_path": row["image"],
+            "label": row["gesture"],
+        }
+
+    def _get_rgb_crop_from_meta(self, meta) -> np.ndarray:
+        bgr_image = cv2.imread(meta["image_path"])
+        try:
+            rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        except:
+            print(meta["image_path"])
+        x1, y1, x2, y2 = map(int, meta["bbox"])
+        rgb_crop = rgb_image[y1:y2, x1:x2]
+        return rgb_crop
+
+    def __len__(self) -> int:
+        return len(self.meta_table)
+
+    def __getitem__(self, index: int) -> Dict[str, Any]:
+        sample = self.read_meta(index)
+        crop = self._get_rgb_crop_from_meta(sample)
+        sample["image"] = crop
+        return sample
 
 
 def parse_xyxy_bbox_from_string(bbox_str: str):
