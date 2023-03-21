@@ -6,54 +6,21 @@ from static_gesture_classification.data_loading.ndrczc35bt_dataset import (
     NdrczcMarkupTable,
     parse_xyxy_bbox_from_string,
     read_ndrczc_markup_in_train_ready_format,
+    NdrczcDataset,
 )
+from static_gesture_classification.custom_static_gesure_record import (
+    CustomStaticGestureRecord,
+)
+from static_gesture_classification.data_loading.custom_dataset import (
+    CustomRecordDataset,
+)
+
 from const import DATA_ROOT
 import cv2
 import matplotlib.pyplot as plt
 import pandas as p
 from general.utils import traverse_all_files, keep_files_with_extension
-from torch.utils.data import Dataset, Subset, ConcatDataset
 from typing import Any, Dict
-
-
-class ReadMetaDataset(Dataset):
-    """Dataset that requires separate method for meta reading,
-    In order to not read image when we need only meta, which should drastically analytic"""
-
-    def read_meta(self, index) -> Any:
-        raise NotImplementedError
-
-
-class NdrczcDataset(ReadMetaDataset):
-    def __init__(self, csv_meta_path: str) -> None:
-        self.meta_table = read_ndrczc_markup_in_train_ready_format(csv_meta_path)
-
-    def read_meta(self, index) -> Any:
-        row = self.meta_table.iloc[index]
-        return {
-            "bbox": parse_xyxy_bbox_from_string(row["bbox"]),
-            "image_path": row["image"],
-            "label": row["gesture"],
-        }
-
-    def _get_rgb_crop_from_meta(self, meta) -> np.ndarray:
-        bgr_image = cv2.imread(meta["image_path"])
-        try:
-            rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
-        except:
-            print(meta["image_path"])
-        x1, y1, x2, y2 = map(int, meta["bbox"])
-        rgb_crop = rgb_image[y1:y2, x1:x2]
-        return rgb_crop
-
-    def __len__(self) -> int:
-        return len(self.meta_table)
-
-    def __getitem__(self, index: int) -> Dict[str, Any]:
-        sample = self.read_meta(index)
-        crop = self._get_rgb_crop_from_meta(sample)
-        sample["image"] = crop
-        return sample
 
 
 def draw_sample(absolute_path: str, box: str, label: str) -> None:
