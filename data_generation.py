@@ -8,6 +8,7 @@ from static_gesture_classification.static_gesture import StaticGesture
 from static_gesture_classification.custom_static_gesure_record import (
     CustomStaticGestureRecord,
 )
+from const import CUSTOM_DATA_ROOT
 
 
 class StaticGestureRecorder:
@@ -186,7 +187,7 @@ class StaticGestureRecorder:
 
 def main():
     recorder = StaticGestureRecorder()
-    recorder.run("E:\\dev\\MyFirstDataProject\\Data\\custom_data")
+    recorder.run(CUSTOM_DATA_ROOT)
 
 
 if __name__ == "__main__":

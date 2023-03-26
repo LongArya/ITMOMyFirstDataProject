@@ -12,6 +12,7 @@ import pandas as pd
 from typing import Dict, List
 from collections import defaultdict
 from general.data_structures.data_split import DataSplit
+from static_gesture_classification.static_gesture import StaticGesture
 
 
 # TODO move to other place
@@ -34,10 +35,10 @@ class ClassificationResultsDataframe(pd.DataFrame):
         ...
 
 
-def init_model(cfg: StaticGestureConfig) -> nn.Module:
+def init_static_gesture_classifier(cfg: StaticGestureConfig) -> nn.Module:
     if cfg.model.architecture == "resnet18":
         model = resnet18(pretrained=cfg.model.use_pretrained)
-        model.fc = nn.Linear(model.fc.in_features, cfg.train_hyperparams.num_classes)
+        model.fc = nn.Linear(model.fc.in_features, len(StaticGesture))
         return model
     else:
         raise NotImplementedError(f"Unknown architecture: {cfg.model.architecture}")
@@ -58,8 +59,6 @@ def init_lr_scheduler(optimizer, cfg: StaticGestureConfig):
         )
 
 
-# TODO test this on mnist
-# TODO add metrics calculations
 # Metrics calculations -> requires train and val predictions?
 class StaticGestureClassifier(pl.LightningModule):
     def __init__(
@@ -71,7 +70,7 @@ class StaticGestureClassifier(pl.LightningModule):
         self.cfg = cfg
         # FIXME use focal loss? / specify loss in cfg
         self.criterion = nn.CrossEntropyLoss()
-        self.model = init_model(self.cfg)
+        self.model = init_static_gesture_classifier(self.cfg)
         self.predictions_on_datasets: Dict[
             DataSplit, ClassificationResultsDataframe
         ] = defaultdict(
@@ -97,8 +96,8 @@ class StaticGestureClassifier(pl.LightningModule):
         for path, gt_class, pred_class, pred_score in zip(
             images_paths, gt_classes, pred_classes, predictions_scores
         ):
-            gt_label = self.cfg.train_hyperparams.classes_names[gt_class.item()]
-            pred_label = self.cfg.train_hyperparams.classes_names[pred_class.item()]
+            gt_label = StaticGesture(gt_class.item())
+            pred_label = StaticGesture(pred_class.item())
             batch_predictions.append([path, gt_label, pred_label, pred_score.item()])
         batch_prediction_dataframe: ClassificationResultsDataframe = pd.DataFrame(
             batch_predictions,
@@ -122,6 +121,8 @@ class StaticGestureClassifier(pl.LightningModule):
         )
 
         loss = self.criterion(pred_labels, gt_labels)
+        # TODO specify batch size, since in might be incorrectly inferred from dict
+        self.log("train_loss", loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
