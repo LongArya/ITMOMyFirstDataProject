@@ -14,8 +14,6 @@ class AugsConfig:
 
 @dataclass
 class TrainHyperparameters:
-    num_classes: int
-    classes_names: List[str]
     device: str
     learinig_rate: float
     momentun: float
