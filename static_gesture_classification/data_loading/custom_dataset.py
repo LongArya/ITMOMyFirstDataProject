@@ -11,7 +11,7 @@ class CustomRecordDataset(ReadMetaDataset):
     def __init__(self, custom_record: CustomStaticGestureRecord) -> None:
         self._record: CustomStaticGestureRecord = custom_record
         self._bbox = self._record.meta_xyxy_box
-        self._gesture_index = self._record.meta_gesture.value - 1
+        self._gesture_index = self._record.meta_gesture.value
         self._images_paths = self._record.images_paths
 
     def read_meta(self, index: int) -> Any:
