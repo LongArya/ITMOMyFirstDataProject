@@ -7,11 +7,11 @@ DATA_ROOT = os.path.join(WORKSPACE_DIR, "Data")
 NDRCZC_DATA_ROOT = os.path.join(DATA_ROOT, "ndrczc35bt-1")
 CUSTOM_DATA_ROOT = os.path.join(DATA_ROOT, "custom_data")
 
-TRAIN_RESULTS_ROOT = os.path.join(REPO_DIR, "training_results")
+TRAIN_RESULTS_ROOT = os.path.join(WORKSPACE_DIR, "training_results")
 STATIC_GESTURE_RESULTS_ROOT = os.path.join(
     TRAIN_RESULTS_ROOT, "static_gesture_classification"
 )
 STATIC_GESTURE_CFG_ROOT = os.path.join(
-    WORKSPACE_DIR, "static_gesture_classification", "conf"
+    WORKSPACE_DIR, "code", "static_gesture_classification", "conf"
 )
 STATIC_GESTURE_CFG_NAME = "base_static_gesture_config"
