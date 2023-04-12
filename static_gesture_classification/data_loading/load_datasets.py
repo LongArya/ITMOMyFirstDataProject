@@ -9,7 +9,27 @@ from static_gesture_classification.data_loading.custom_dataset import (
     CustomStaticGestureRecord,
 )
 from general.datasets.read_meta_dataset import ReadMetaDataset, ReadMetaConcatDataset
+from static_gesture_classification.static_gesture import StaticGesture
+from general.datasets.read_meta_dataset import ReadMetaSubset
 from typing import List
+
+
+def get_dataset_subset_with_gesture(dataset, label: StaticGesture):
+    indexes = []
+    for i in range(len(dataset)):
+        meta = dataset.read_meta(i)
+        if StaticGesture(meta["label"]) == label:
+            indexes.append(i)
+    return ReadMetaSubset(dataset, indexes)
+
+
+def get_dataset_unique_labels(dataset: ReadMetaDataset) -> List[int]:
+    labels: List[int] = []
+    for i in range(len(dataset)):
+        meta = dataset.read_meta(i)
+        labels.append(meta["label"])
+    unique_labels = list(set(labels))
+    return unique_labels
 
 
 def load_custom_train_dataset() -> ReadMetaDataset:
