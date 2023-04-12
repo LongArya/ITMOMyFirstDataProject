@@ -11,7 +11,7 @@ import pytorch_lightning as pl
 from static_gesture_classification.config import StaticGestureConfig
 from general.data_structures.model_line import ModelLine
 import pandas as pd
-from typing import Dict, List
+from typing import Dict, List, Iterable, Tuple
 from collections import defaultdict
 from general.data_structures.data_split import DataSplit
 from static_gesture_classification.static_gesture import StaticGesture
@@ -23,6 +23,12 @@ from static_gesture_classification.metrics_utils import (
     get_pr_curves_for_gestures,
     get_pr_curve_plot,
     generate_confusion_matrix_plot_from_classification_results,
+    get_combined_pr_curves_plot,
+    get_f1_curve_plot,
+    get_f1_curve_values_from_pr_curve,
+    get_combined_f1_curves_plot,
+    PRCurve,
+    compute_AP_for_gesture,
 )
 
 
@@ -91,7 +97,6 @@ class StaticGestureClassifier(pl.LightningModule):
         ):
             gt_label = StaticGesture(gt_class.item()).name
             pred_label = StaticGesture(pred_class.item()).name
-            # TODO append scores of all classes
             batch_predictions.append(
                 [path, gt_label, pred_label, pred_score.item()]
                 + [prob.item() for prob in single_image_probabilities]
@@ -118,7 +123,6 @@ class StaticGestureClassifier(pl.LightningModule):
         )
 
         loss = self.criterion(pred_labels, gt_labels)
-        # specify batch size, since in might be incorrectly inferred from dict by lightning
         batch_size = batch["image"].size(dim=0)
         self.log("train_loss", loss, batch_size=batch_size)
         return loss
@@ -154,6 +158,7 @@ class StaticGestureClassifier(pl.LightningModule):
         classification_results: ClassificationResultsDataframe,
         log_path: str,
     ) -> None:
+        """"""
         fig, ax = plt.subplots()
         ax = generate_confusion_matrix_plot_from_classification_results(
             classification_results, ax
@@ -161,20 +166,120 @@ class StaticGestureClassifier(pl.LightningModule):
         self.logger.experiment[log_path].upload(File.as_image(fig))
         plt.close(fig)
 
-    def on_validation_epoch_end(self) -> None:
-        save_path = os.path.join(
-            self.results_location.val_predictions_root, f"{self.current_epoch:04d}.csv"
+    def _log_pr_curves_to_neptune(
+        self,
+        pr_curves: Dict[StaticGesture, PRCurve],
+        neptune_root: str,
+        save_common_plot_only: bool,
+    ):
+        """Logs plots of Precision recall curve for each class to neptune run"""
+        # log individual plots
+        if not save_common_plot_only:
+            for gesture, curve in pr_curves.items():
+                gesture_log_path = f"{neptune_root}/{gesture.name}"
+                fig, gesture_plot_ax = plt.subplots()
+                gesture_plot_ax = get_pr_curve_plot(
+                    plot_axis=gesture_plot_ax, pr_curve=curve
+                )
+                self.logger.experiment[gesture_log_path].upload(File.as_image(fig))
+                plt.close(fig)
+
+        # log combined plots
+        fig, combined_gestures_ax = plt.subplots()
+        combined_gestures_ax = get_combined_pr_curves_plot(
+            plot_axis=combined_gestures_ax, pr_curves=pr_curves
         )
+        combined_plot_log_path = f"{neptune_root}/combined_plot"
+        self.logger.experiment[combined_plot_log_path].upload(File.as_image(fig))
+        plt.close(fig)
+
+    def _log_f1_curves_to_neptune(
+        self,
+        f1_curves: Dict[StaticGesture, Tuple[Iterable[float], Iterable[float]]],
+        neptune_root: str,
+        save_common_plot_only: bool,
+    ) -> None:
+        """Logs plots of F1 score curves for each class to neptune run"""
+        # log individual plots
+        if not save_common_plot_only:
+            for gesture, (thresholds, f1_curve_values) in f1_curves.items():
+                fig, gesture_f1_curve_ax = plt.subplots()
+                gesture_f1_curve_ax = get_f1_curve_plot(
+                    plot_axis=gesture_f1_curve_ax,
+                    f1_score_values=f1_curve_values,
+                    thresholds=thresholds,
+                )
+                gesture_log_path = f"{neptune_root}/{gesture.name}"
+                self.logger.experiment[gesture_log_path].upload(File.as_image(fig))
+                plt.close(fig)
+
+        # log combined plots
+        fig, combined_gestures_ax = plt.subplots()
+        combined_gestures_ax = get_combined_f1_curves_plot(
+            plot_axis=combined_gestures_ax, f1_curves=f1_curves
+        )
+        combined_plot_log_path = f"{neptune_root}/combined_plot"
+        self.logger.experiment[combined_plot_log_path].upload(File.as_image(fig))
+        plt.close(fig)
+
+    def _log_validation_metrics(
+        self, val_predictions: ClassificationResultsDataframe
+    ) -> None:
+        """"""
+        # log confusion matrix
         conf_matrix_neptune_path = (
             f"val/figures/confusion_matrices/{self.current_epoch:04d}"
         )
         self._log_conf_matrix_to_neptune(
-            classification_results=self.predictions_on_datasets[DataSplit.VAL],
+            classification_results=val_predictions,
             log_path=conf_matrix_neptune_path,
         )
-        self.predictions_on_datasets[DataSplit.VAL].to_csv(save_path)
+        save_only_common_plots = True  # FIXME specify somewhere
+        # log pr curves
+        pr_curves: Dict[StaticGesture, PRCurve] = get_pr_curves_for_gestures(
+            classification_results=val_predictions
+        )
+        self._log_pr_curves_to_neptune(
+            pr_curves=pr_curves,
+            neptune_root=f"val/figures/PR_curves/{self.current_epoch:04d}",
+            save_common_plot_only=save_only_common_plots,
+        )
+        # log f1 scores and thresholds
 
-        # refresh results
+        f1_curves: Dict[StaticGesture, Tuple[Iterable[float], Iterable[float]]] = {}
+        for gesture, pr_curve in pr_curves.items():
+            f1_curve_values = get_f1_curve_values_from_pr_curve(pr_curve)
+            f1_curves[gesture] = (pr_curve.thresholds, f1_curve_values)
+            # TODO log max f1 and corresponding threshold
+        self._log_f1_curves_to_neptune(
+            f1_curves=f1_curves,
+            neptune_root=f"val/figures/F1_curves/{self.current_epoch:04d}",
+            save_common_plot_only=save_only_common_plots,
+        )
+        # log mAP
+        AP_scores: List[float] = []
+        for gesture in StaticGesture:
+            AP_score_for_gesture = compute_AP_for_gesture(
+                results=val_predictions, target_gesture=gesture
+            )
+            self.logger.experiment[f"val/AP/{gesture.name}"].append(
+                AP_score_for_gesture
+            )
+            AP_scores.append(AP_score_for_gesture)
+        mAP = np.mean(AP_scores)
+        self.log("mAP", mAP)
+
+    def on_validation_epoch_end(self) -> None:
+        # log metrics to neptune
+        self._log_validation_metrics(
+            val_predictions=self.predictions_on_datasets[DataSplit.VAL]
+        )
+        # save predictions locally
+        save_path = os.path.join(
+            self.results_location.val_predictions_root, f"{self.current_epoch:04d}.csv"
+        )
+        self.predictions_on_datasets[DataSplit.VAL].to_csv(save_path)
+        # refresh predictions
         self.predictions_on_datasets[
             DataSplit.VAL
         ] = init_classification_results_dataframe()
@@ -193,6 +298,3 @@ class StaticGestureClassifier(pl.LightningModule):
             "lr_scheduler": scheduler,
             "monitor": "train_loss",
         }
-
-
-# failure cases
