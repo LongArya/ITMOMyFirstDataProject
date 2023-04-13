@@ -1,5 +1,23 @@
 import os
+import torch
 from typing import List
+import torchvision.transforms as tf
+
+
+class TorchNormalizeInverse:
+    """
+    Undoes the normalization and returns the reconstructed images in the input domain.
+    """
+
+    def __init__(self, mean, std):
+        mean = torch.as_tensor(mean)
+        std = torch.as_tensor(std)
+        std_inv = 1 / (std + 1e-7)
+        mean_inv = -mean * std_inv
+        self.normalization_inverse = tf.Normalize(mean=mean_inv, std=std_inv)
+
+    def __call__(self, tensor):
+        return self.normalization_inverse(tensor.clone())
 
 
 def traverse_all_files(data_root: str) -> List[str]:
