@@ -79,6 +79,9 @@ class StaticGestureClassifier(pl.LightningModule):
         ] = defaultdict(init_classification_results_dataframe)
         self.results_location = results_location
 
+    def forward(self, inputs):
+        return self.model(inputs)
+
     def _append_predictions_to_split(
         self,
         gt_classes: torch.Tensor,
@@ -247,10 +250,21 @@ class StaticGestureClassifier(pl.LightningModule):
         # log f1 scores and thresholds
 
         f1_curves: Dict[StaticGesture, Tuple[Iterable[float], Iterable[float]]] = {}
+        max_f1_scores: List[float] = []
         for gesture, pr_curve in pr_curves.items():
             f1_curve_values = get_f1_curve_values_from_pr_curve(pr_curve)
             f1_curves[gesture] = (pr_curve.thresholds, f1_curve_values)
-            # TODO log max f1 and corresponding threshold
+            optimal_f1_score_index = np.argmax(f1_curve_values)
+            opitmal_f1 = f1_curve_values[optimal_f1_score_index]
+            optimal_thrd = pr_curve.thresholds[optimal_f1_score_index]
+            self.logger.experiment[f"val/max_f1/{gesture.name}"].append(opitmal_f1)
+            self.logger.experiment[f"val/optimal_thrd/{gesture.name}"].append(
+                optimal_thrd
+            )
+
+        mean_f1 = np.mean(max_f1_scores)
+
+        # TODO log max f1 and corresponding threshold
         self._log_f1_curves_to_neptune(
             f1_curves=f1_curves,
             neptune_root=f"val/figures/F1_curves/{self.current_epoch:04d}",
