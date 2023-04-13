@@ -1,15 +1,3 @@
-num_classes: 10
-classes_names:
-  - "background"
-  - "one"
-  - "two"
-  - "three"
-  - "four"
-  - "five"
-  - "six"
-  - "seven"
-  - "eight"
-  - "nine"
 device: "cuda"
 learinig_rate: 0.001
 momentun: 0.9
