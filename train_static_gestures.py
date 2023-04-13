@@ -1,4 +1,7 @@
 import os
+import random
+import cv2
+from PIL import Image
 from matplotlib.axes._axes import Axes
 import json
 from torchmetrics.classification import BinaryPrecisionRecallCurve
@@ -16,20 +19,17 @@ from static_gesture_classification.metrics_utils import (
 from pytorch_lightning.callbacks import ModelCheckpoint
 from neptune.types import File
 from matplotlib.axes._axes import Axes
-import seaborn as sns
 import torch
-from sklearn.metrics import confusion_matrix, precision_recall_curve
-import torch.nn as nn
 import numpy as np
 import pandas as pd
 import hydra
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from typing import Dict, Any, List, Callable
+from typing import Dict, Any, List, Callable, Iterable
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
-from pytorch_lightning.loggers import CSVLogger, NeptuneLogger
+from pytorch_lightning.loggers import NeptuneLogger
 from static_gesture_classification.static_gesture_classifer import (
     StaticGestureClassifier,
 )
@@ -40,6 +40,9 @@ from const import (
     STATIC_GESTURE_CFG_ROOT,
     DATA_ROOT,
     TRAIN_RESULTS_ROOT,
+    IMAGENET_MEAN,
+    IMAGENET_STD,
+    RESNET18_INPUT_SIZE,
 )
 from torchvision.datasets import MNIST
 from torch.utils.data import Dataset, DataLoader, default_collate
@@ -49,6 +52,7 @@ import torchvision.transforms as tf
 from static_gesture_classification.data_loading.load_datasets import (
     load_train_dataset,
     get_dataset_subset_with_gesture,
+    get_dataset_unique_labels,
 )
 from general.datasets.read_meta_dataset import (
     ReadMetaSubset,
@@ -60,6 +64,13 @@ from static_gesture_classification.classification_results_dataframe import (
 )
 from pytorch_lightning.callbacks import Callback
 from neptune.new.run import Run
+from static_gesture_classification.config import AugsConfig
+from general.data_structures.data_split import DataSplit
+from general.utils import TorchNormalizeInverse
+from static_gesture_classification.data_loading.transform_applier import (
+    TransformApplier,
+)
+
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
 
@@ -67,15 +78,46 @@ cs = ConfigStore.instance()
 cs.store(name=STATIC_GESTURE_CFG_NAME, node=StaticGestureConfig)
 
 
-TEST_TRAIN_TRANSFORM = tf.Compose(
-    [
-        tf.ToTensor(),
-        tf.Normalize(
-            (0.5, 0.5, 0.5), (0.5, 0.5, 0.5)
-        ),  # FIXME fill with relevant values
-        tf.Resize((224, 224)),
-    ]
-)
+def init_augmentations_from_config(
+    augs_cfg: AugsConfig,
+) -> Dict[DataSplit, Callable[[Image.Image], torch.Tensor]]:
+    """Inits augmentations for each"""
+    resize = tf.Resize(augs_cfg.input_resolution)
+    normalization = tf.Compose(
+        [
+            tf.ToTensor(),
+            tf.Normalize(
+                mean=augs_cfg.normalization_mean, std=augs_cfg.normalization_std
+            ),
+        ]
+    )
+    augmentation_transform = tf.Compose(
+        [
+            tf.ColorJitter(
+                brightness=augs_cfg.brightness_factor,
+                contrast=augs_cfg.contrast_factor,
+                saturation=augs_cfg.saturation_contrast,
+                hue=augs_cfg.hue_contrast,
+            ),
+            tf.RandomAffine(
+                degrees=augs_cfg.rotation_range_angles_degrees,
+                translate=augs_cfg.translation_range_imsize_fractions,
+                scale=augs_cfg.scaling_range_factors,
+                shear=augs_cfg.shear_x_axis_degrees_range,
+            ),
+        ]
+    )
+    val_aug = tf.Compose([resize, normalization])
+    train_aug = tf.Compose(
+        [
+            resize,
+            tf.RandomApply(
+                transforms=[augmentation_transform], p=augs_cfg.augmentation_probability
+            ),
+            normalization,
+        ]
+    )
+    return {DataSplit.TRAIN: train_aug, DataSplit.VAL: val_aug}
 
 
 def custom_collate(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -86,23 +128,16 @@ def custom_collate(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
     return collated_batch
 
 
-class TransformApplier(ReadMetaDataset):
-    def __init__(
-        self, dataset: ReadMetaDataset, transformation: Callable[[Any], Any]
-    ) -> None:
-        self.dataset = dataset
-        self.transformation = transformation
-
-    def __len__(self) -> int:
-        return len(self.dataset)
-
-    def read_meta(self, index: int) -> Any:
-        return self.dataset.read_meta(index)
-
-    def __getitem__(self, index) -> Any:
-        sample = deepcopy(self.dataset[index])
-        sample["image"] = self.transformation(sample["image"])
-        return sample
+def neutralize_image_normalization(
+    image_tensor: torch.Tensor, mean: Iterable[float], std: Iterable[float]
+) -> np.ndarray:
+    inverse_normalization = TorchNormalizeInverse(mean=mean, std=std)
+    denormalized_tensor = inverse_normalization(image_tensor)
+    denormalized_tensor *= 255
+    denormalized_tensor = torch.permute(denormalized_tensor, (1, 2, 0))
+    image: np.ndarray = denormalized_tensor.numpy()
+    image = image.astype(np.uint8)
+    return image
 
 
 class DummyInferenceCallback(Callback):
@@ -136,32 +171,16 @@ def get_dataset_subset_with_label(dataset, label):
     return ReadMetaSubset(dataset, indexes)
 
 
-def get_dataset_unique_labels(dataset: ReadMetaDataset) -> List[int]:
-    labels: List[int] = []
-    for i in range(len(dataset)):
-        meta = dataset.read_meta(i)
-        labels.append(meta["label"])
-    unique_labels = list(set(labels))
-    return unique_labels
-
-
 def get_mini_train_dataset() -> ReadMetaDataset:
     dataset = load_train_dataset()
-    unique_labels = get_dataset_unique_labels(dataset)
     dataset_concat_target = []
-    for label in unique_labels:
-        label_subset = get_dataset_subset_with_label(dataset=dataset, label=label)
+    for gesture in StaticGesture:
+        label_subset = get_dataset_subset_with_gesture(dataset=dataset, label=gesture)
         dataset_concat_target.append(ReadMetaSubset(label_subset, [0, 1]))
     concat_dataset = ReadMetaConcatDataset(dataset_concat_target)
-    result_dataset = TransformApplier(
-        dataset=concat_dataset, transformation=TEST_TRAIN_TRANSFORM
-    )
-    return result_dataset
+    return concat_dataset
 
 
-# TODO log stats about data and thresholds
-# TODO init augmentations wrt config params
-# TODO train first version
 def generate_gesture_distribution_plot(
     plot_axis: Axes, gesture_distribution: Dict[StaticGesture, int]
 ):
@@ -198,6 +217,68 @@ def log_dataset_distribution_to_neptune(
     plt.close(fig)
 
 
+def log_dataset_samples_to_neptune(
+    neptune_run: Run,
+    neptune_root: str,
+    samples_num: int,
+    dataset: ReadMetaDataset,
+    augs_config: AugsConfig,
+):
+    """Logs visualizations of N random samples to neptune run"""
+    log_indexes: List[int] = random.sample(
+        population=list(range(len(dataset))), k=samples_num
+    )
+    for logged_example_index, index in enumerate(log_indexes):
+        sample = dataset[index]
+        fig, ax = plt.subplots()
+        image = sample["image"]
+        image = neutralize_image_normalization(
+            image,
+            mean=augs_config.normalization_mean,
+            std=augs_config.normalization_std,
+        )
+        gesture = StaticGesture(sample["label"])
+        ax.imshow(image)
+        ax.set_title(gesture.name)
+        neptune_run[f"{neptune_root}/sample_{logged_example_index}"].upload(
+            File.as_image(fig)
+        )
+        plt.close(fig)
+
+
+def log_info_about_datasets_to_neptune(
+    train_dataset: ReadMetaDataset,
+    val_dataset: ReadMetaDataset,
+    neptune_run: Run,
+    logged_samples_amount: int,
+    augs_config: AugsConfig,
+):
+    log_dataset_distribution_to_neptune(
+        neptune_run=neptune_run,
+        dataset=train_dataset,
+        log_path="datasets/train_distribution",
+    )
+    log_dataset_distribution_to_neptune(
+        neptune_run=neptune_run,
+        dataset=val_dataset,
+        log_path="datasets/val_distribution",
+    )
+    log_dataset_samples_to_neptune(
+        neptune_run=neptune_run,
+        neptune_root="datasets/train_samples",
+        samples_num=logged_samples_amount,
+        dataset=train_dataset,
+        augs_config=augs_config,
+    )
+    log_dataset_samples_to_neptune(
+        neptune_run=neptune_run,
+        neptune_root="datasets/val_samples",
+        samples_num=logged_samples_amount,
+        dataset=val_dataset,
+        augs_config=augs_config,
+    )
+
+
 @hydra.main(
     config_path=STATIC_GESTURE_CFG_ROOT,
     config_name=STATIC_GESTURE_CFG_NAME,
@@ -215,19 +296,29 @@ def train_static_gesture(cfg: StaticGestureConfig):
     model_line: ModelLine = ModelLine(model_line_path)
     lightning_classifier = StaticGestureClassifier(cfg, results_location=model_line)
 
-    dataset = get_mini_train_dataset()
-    log_dataset_distribution_to_neptune(
+    train_dataset = get_mini_train_dataset()  # FIXME use actual functions
+    val_dataset = get_mini_train_dataset()
+    augmentations = init_augmentations_from_config(augs_cfg=cfg.augs)
+    train_dataset = TransformApplier(
+        dataset=train_dataset, transformation=augmentations[DataSplit.TRAIN]
+    )
+    val_dataset = TransformApplier(
+        dataset=val_dataset, transformation=augmentations[DataSplit.VAL]
+    )
+    log_info_about_datasets_to_neptune(
+        train_dataset=train_dataset,
+        val_dataset=val_dataset,
         neptune_run=neptune_logger.experiment,
-        dataset=dataset,
-        # log_path=os.path.join("datasets", "train"),
-        log_path="datasets/train",
+        logged_samples_amount=10,
+        augs_config=cfg.augs,
     )
 
     dummy_output_directory = os.path.join(model_line.root, "dummy_output")
     os.makedirs(dummy_output_directory, exist_ok=True)
 
     dummy_inference_callback = DummyInferenceCallback(
-        dummy_input=torch.zeros(1, 3, 224, 224), save_root=dummy_output_directory
+        dummy_input=torch.zeros(1, 3, *cfg.augs.input_resolution),
+        save_root=dummy_output_directory,
     )
     model_ckpt_callback = ModelCheckpoint(
         monitor="mAP",
@@ -239,16 +330,16 @@ def train_static_gesture(cfg: StaticGestureConfig):
         filename="checkpoint_{epoch:02d}-{mAP:.2f}",
     )
     trainer = pl.Trainer(
-        logger=[neptune_logger],
+        logger=neptune_logger,
         log_every_n_steps=1,
         max_epochs=3,
         callbacks=[dummy_inference_callback, model_ckpt_callback],
     )
     train_dataloader = DataLoader(
-        dataset=dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
+        dataset=train_dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
     )
     val_dataloader = DataLoader(
-        dataset=dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
+        dataset=val_dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
     )
     trainer.fit(
         model=lightning_classifier,
@@ -257,34 +348,23 @@ def train_static_gesture(cfg: StaticGestureConfig):
     )
 
 
-def test_logging_of_conf_matrix():
-    dataframe = pd.read_csv(
-        "E:\\dev\\MyFirstDataProject\\training_results\\dummy_line1\\train_predictions\\0002.csv",
-        index_col=0,
+@hydra.main(
+    config_path=STATIC_GESTURE_CFG_ROOT,
+    config_name=STATIC_GESTURE_CFG_NAME,
+    version_base=None,
+)
+def test_output(cfg: StaticGestureConfig):
+    model = StaticGestureClassifier.load_from_checkpoint(
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-54\\checkpoints\\checkpoint_epoch=00-mAP=0.87.ckpt",
+        cfg=cfg,
+        results_location=None,
     )
-    # ax = generate_confusion_matrix_plot_from_classification_results(dataframe, ax)
-    pr_curve = compute_pr_curve_for_gesture(dataframe, StaticGesture.OKEY)
-    f1_curve_values = get_f1_curve_values_from_pr_curve(pr_curve=pr_curve)
-
-    fig, ax = plt.subplots()
-    ax = get_f1_curve_plot(
-        plot_axis=ax,
-        f1_score_values=f1_curve_values,
-        thresholds=pr_curve.thresholds,
-    )
-    plt.show()
-    return
-
-    neptune_logger = NeptuneLogger(
-        api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIxNmEzZDc3Mi1kNDg4LTQ2MjgtOGU4MS1jZDlhZDM2OTkyM2MifQ==",
-        project="longarya/StaticGestureClassification",
-        tags=["training", "resnet18"],
-        log_model_checkpoints=False,
-    )
-    mAP = 1
-    neptune_logger.experiment["val/mAP"].append(mAP)
-    # plt.close(fig)
+    x = torch.zeros((1, 3, 224, 224))
+    model.eval()
+    y = model(x)
+    print(y)
 
 
+# test_augmentations()
 # train_static_gesture()
-print(os.path.join("a", "b"))
+test_output()
