@@ -10,6 +10,12 @@ class AugsConfig:
     rotation_range_angles_degrees: Tuple[float, float]
     translation_range_imsize_fractions: Tuple[float, float]
     scaling_range_factors: Tuple[float, float]
+    shear_x_axis_degrees_range: Tuple[float, float]
+    brightness_factor: float
+    contrast_factor: float
+    saturation_contrast: float
+    hue_contrast: float
+    augmentation_probability: float
 
 
 @dataclass

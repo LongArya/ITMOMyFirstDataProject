@@ -13,8 +13,16 @@ rotation_range_angles_degrees:
   - -10
   - 10
 translation_range_imsize_fractions: 
-  - 0.2
-  - 0.2 
+  - 0.1
+  - 0.1 
 scaling_range_factors: 
   - 0.9
   - 1.1
+shear_x_axis_degrees_range:
+  - -10
+  - 10
+brightness_factor: 0.2
+contrast_factor: 0.2
+saturation_contrast: 0.2
+hue_contrast: 0.1
+augmentation_probability: 0.8
