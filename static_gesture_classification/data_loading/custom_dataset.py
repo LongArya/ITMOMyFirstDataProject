@@ -5,6 +5,7 @@ from static_gesture_classification.custom_static_gesure_record import (
     CustomStaticGestureRecord,
 )
 from typing import Any
+from PIL import Image
 
 
 class CustomRecordDataset(ReadMetaDataset):
@@ -22,13 +23,12 @@ class CustomRecordDataset(ReadMetaDataset):
         }
 
     def _get_rgb_crop_from_meta(self, meta) -> np.ndarray:
-        bgr_image = cv2.imread(meta["image_path"])
+        image = Image.open(meta["image_path"])
         try:
-            rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+            rgb_image = image.convert("RGB")
         except:
             print(meta["image_path"])
-        x1, y1, x2, y2 = map(int, meta["bbox"])
-        rgb_crop = rgb_image[y1:y2, x1:x2]
+        rgb_crop = rgb_image.crop(meta["bbox"])
         return rgb_crop
 
     def __len__(self) -> int:

@@ -8,6 +8,7 @@ from general.datasets.read_meta_dataset import (
 )
 from typing import Dict, Any
 import cv2
+from PIL import Image
 import numpy as np
 from general.utils import traverse_all_files, keep_files_with_extension
 from static_gesture_classification.static_gesture import StaticGesture
@@ -87,13 +88,12 @@ class NdrczcDataset(ReadMetaDataset):
         }
 
     def _get_rgb_crop_from_meta(self, meta) -> np.ndarray:
-        bgr_image = cv2.imread(meta["image_path"])
+        image = Image.open(meta["image_path"])
         try:
-            rgb_image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+            rgb_image = image.convert("RGB")
         except:
             print(meta["image_path"])
-        x1, y1, x2, y2 = map(int, meta["bbox"])
-        rgb_crop = rgb_image[y1:y2, x1:x2]
+        rgb_crop = rgb_image.crop(meta["bbox"])
         return rgb_crop
 
     def __len__(self) -> int:
