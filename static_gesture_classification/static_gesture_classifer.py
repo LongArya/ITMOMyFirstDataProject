@@ -11,7 +11,8 @@ import pytorch_lightning as pl
 from static_gesture_classification.config import StaticGestureConfig
 from general.data_structures.model_line import ModelLine
 import pandas as pd
-from typing import Dict, List, Iterable, Tuple
+from PIL import Image
+from typing import Dict, List, Iterable, Tuple, Callable
 from collections import defaultdict
 from general.data_structures.data_split import DataSplit
 from static_gesture_classification.static_gesture import StaticGesture
@@ -22,17 +23,10 @@ from static_gesture_classification.metrics_utils import (
     log_dict_like_structure_to_neptune,
 )
 from static_gesture_classification.metrics_utils import (
-    compute_pr_curve_for_gesture,
-    get_pr_curves_for_gestures,
-    get_pr_curve_plot,
     generate_confusion_matrix_plot_from_classification_results,
-    get_combined_pr_curves_plot,
-    get_f1_curve_plot,
-    get_f1_curve_values_from_pr_curve,
-    get_combined_f1_curves_plot,
-    PRCurve,
-    compute_AP_for_gesture,
 )
+from static_gesture_classification.config import AugsConfig
+import torchvision.transforms as tf
 
 
 def init_static_gesture_classifier(cfg: StaticGestureConfig) -> nn.Module:
@@ -66,6 +60,48 @@ def init_classification_results_dataframe() -> ClassificationResultsDataframe:
     )
 
 
+def init_augmentations_from_config(
+    augs_cfg: AugsConfig,
+) -> Dict[DataSplit, Callable[[Image.Image], torch.Tensor]]:
+    """Inits augmentations for each"""
+    resize = tf.Resize(augs_cfg.input_resolution)
+    normalization = tf.Compose(
+        [
+            tf.ToTensor(),
+            tf.Normalize(
+                mean=augs_cfg.normalization_mean, std=augs_cfg.normalization_std
+            ),
+        ]
+    )
+    augmentation_transform = tf.Compose(
+        [
+            tf.ColorJitter(
+                brightness=augs_cfg.brightness_factor,
+                contrast=augs_cfg.contrast_factor,
+                saturation=augs_cfg.saturation_contrast,
+                hue=augs_cfg.hue_contrast,
+            ),
+            tf.RandomAffine(
+                degrees=augs_cfg.rotation_range_angles_degrees,
+                translate=augs_cfg.translation_range_imsize_fractions,
+                scale=augs_cfg.scaling_range_factors,
+                shear=augs_cfg.shear_x_axis_degrees_range,
+            ),
+        ]
+    )
+    val_aug = tf.Compose([resize, normalization])
+    train_aug = tf.Compose(
+        [
+            resize,
+            tf.RandomApply(
+                transforms=[augmentation_transform], p=augs_cfg.augmentation_probability
+            ),
+            normalization,
+        ]
+    )
+    return {DataSplit.TRAIN: train_aug, DataSplit.VAL: val_aug}
+
+
 class StaticGestureClassifier(pl.LightningModule):
     def __init__(
         self,
@@ -82,8 +118,30 @@ class StaticGestureClassifier(pl.LightningModule):
         ] = defaultdict(init_classification_results_dataframe)
         self.results_location = results_location
 
-    def forward(self, inputs):
+    def forward(self, inputs: torch.Tensor):
         return self.model(inputs)
+
+    def get_gesture_prediction_for_single_input(
+        self, single_input: torch.Tensor
+    ) -> Tuple[StaticGesture, float]:
+        input_is_single_image: bool = single_input.ndim == 3 or (
+            single_input.ndim == 4 and single_input.shape[0] == 1
+        )
+        if not input_is_single_image:
+            raise ValueError("Should be used with single image only")
+        network_input: torch.Tensor = (
+            single_input
+            if single_input.ndim == 4
+            else torch.unsqueeze(single_input, dim=0)
+        )
+        network_input = network_input.to(self.device)
+        logits = self.model(network_input).cpu()
+        softmax = nn.Softmax(dim=1)
+        probs = softmax(logits)[0]
+        pred_class_index = torch.argmax(probs, dim=0, keepdim=True).item()
+        prediction_probability: float = probs[pred_class_index].item()
+        predicted_gesture: StaticGesture = StaticGesture(pred_class_index)
+        return predicted_gesture, prediction_probability
 
     def _append_predictions_to_split(
         self,
