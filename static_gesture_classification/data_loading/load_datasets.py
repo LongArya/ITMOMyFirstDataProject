@@ -1,7 +1,10 @@
 import os
+import pandas as pd
 from glob import glob
 from static_gesture_classification.data_loading.ndrczc35bt_dataset import (
-    compose_ndrczc_dataset_for_static_gesture_classification,
+    prepare_ndrczc_dataset_for_static_gesture_classification,
+    NdrczcDataset,
+    NdrczcMarkupTable,
 )
 from const import CUSTOM_DATA_ROOT, NDRCZC_DATA_ROOT
 from static_gesture_classification.data_loading.custom_dataset import (
@@ -32,48 +35,65 @@ def get_dataset_unique_labels(dataset: ReadMetaDataset) -> List[int]:
     return unique_labels
 
 
-def load_custom_train_dataset() -> ReadMetaDataset:
-    custom_train_root: str = os.path.join(CUSTOM_DATA_ROOT, "train")
-    custom_train_records_paths: List[str] = glob(os.path.join(custom_train_root, "*"))
+def compose_custom_dataset_from_records(records_root: str) -> ReadMetaDataset:
+    custom_records_paths: List[str] = glob(os.path.join(records_root, "*"))
     custom_records: List[CustomStaticGestureRecord] = [
-        CustomStaticGestureRecord(path) for path in custom_train_records_paths
+        CustomStaticGestureRecord(path) for path in custom_records_paths
     ]
     custom_datasets: List[CustomRecordDataset] = [
         CustomRecordDataset(record) for record in custom_records
     ]
-    custom_train_dataset = ReadMetaConcatDataset(custom_datasets)
-    return custom_train_dataset
+    custom_dataset = ReadMetaConcatDataset(custom_datasets)
+    return custom_dataset
 
 
-def load_full_gesture_dataset() -> ReadMetaDataset:
-    ndrczc_dataset = compose_ndrczc_dataset_for_static_gesture_classification(
-        NDRCZC_DATA_ROOT
+def load_ndrczc_train_dataset() -> ReadMetaDataset:
+    train_split_path = os.path.join(
+        NDRCZC_DATA_ROOT, "CUSTOM_TRAIN_TEST_SPLIT", "train.csv"
     )
-    custom_train_dataset = load_custom_train_dataset()
-    train_dataset = ReadMetaConcatDataset([ndrczc_dataset, custom_train_dataset])
+    train_markup_table: NdrczcMarkupTable = pd.read_csv(train_split_path, index_col=0)
+    train_dataset = NdrczcDataset(train_markup_table)
+    train_dataset = prepare_ndrczc_dataset_for_static_gesture_classification(
+        train_dataset
+    )
     return train_dataset
 
 
-def load_gesture_datasets(
-    amount_per_gesture_train: int, amount_per_gesture_val: int
-) -> Tuple[ReadMetaDataset, ReadMetaDataset]:
-    train_dataset_materials: List[ReadMetaDataset] = []
-    val_dataset_materials: List[ReadMetaDataset] = []
-    full_dataset = load_full_gesture_dataset()
-    for gesture in StaticGesture:
-        gesture_subset = get_dataset_subset_with_gesture(
-            dataset=full_dataset, label=gesture
-        )
-        train_indexes = list(range(amount_per_gesture_train))
-        val_indexes = list(
-            range(
-                amount_per_gesture_train,
-                amount_per_gesture_train + amount_per_gesture_val,
-            )
-        )
-        train_dataset_materials.append(ReadMetaSubset(gesture_subset, train_indexes))
-        val_dataset_materials.append(ReadMetaSubset(gesture_subset, val_indexes))
+def load_ndrczc_val_dataset() -> ReadMetaDataset:
+    val_split_path = os.path.join(
+        NDRCZC_DATA_ROOT, "CUSTOM_TRAIN_TEST_SPLIT", "val.csv"
+    )
+    val_markup_table: NdrczcMarkupTable = pd.read_csv(val_split_path, index_col=0)
+    val_dataset = NdrczcDataset(val_markup_table)
+    val_dataset = prepare_ndrczc_dataset_for_static_gesture_classification(val_dataset)
+    return val_dataset
 
-    train_dataset = ReadMetaConcatDataset(train_dataset_materials)
-    val_dataset = ReadMetaConcatDataset(val_dataset_materials)
-    return train_dataset, val_dataset
+
+def load_custom_train_dataset() -> ReadMetaDataset:
+    custom_train_root: str = os.path.join(CUSTOM_DATA_ROOT, "train")
+    custom_train_dataset = compose_custom_dataset_from_records(
+        records_root=custom_train_root
+    )
+    return custom_train_dataset
+
+
+def load_custom_val_dataset() -> ReadMetaDataset:
+    custom_val_root: str = os.path.join(CUSTOM_DATA_ROOT, "val")
+    custom_val_dataset = compose_custom_dataset_from_records(
+        records_root=custom_val_root
+    )
+    return custom_val_dataset
+
+
+def load_train_dataset() -> ReadMetaDataset:
+    custom_train = load_custom_train_dataset()
+    ndrczc_train = load_ndrczc_train_dataset()
+    train_ds = ReadMetaConcatDataset([custom_train, ndrczc_train])
+    return train_ds
+
+
+def load_val_dataset() -> ReadMetaDataset:
+    custom_val = load_ndrczc_val_dataset()
+    ndrczc_val = load_custom_val_dataset()
+    val_ds = ReadMetaConcatDataset([custom_val, ndrczc_val])
+    return val_ds
