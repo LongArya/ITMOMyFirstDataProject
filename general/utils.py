@@ -1,6 +1,9 @@
+import numpy as np
 import os
 import torch
-from typing import List
+from typing import List, Optional, Dict
+from general.datasets.read_meta_dataset import ReadMetaDataset
+from matplotlib.axes._axes import Axes
 import torchvision.transforms as tf
 
 
@@ -48,3 +51,30 @@ def get_new_pattern_name_folder(root: str, pattern: str) -> str:
     max_pattern_name = os.path.splitext(pattern_named_dirs[-1])[0]
     max_pattern_num = int(max_pattern_name.split(f"_")[-1])
     return os.path.join(root, f"{pattern}_{max_pattern_num + 1:05d}")
+
+
+def get_sample_with_image_path(
+    dataset: ReadMetaDataset, image_path: str
+) -> Optional[Dict]:
+    for i in range(len(dataset)):
+        cur_image_path = dataset.read_meta(i)["image_path"]
+        if cur_image_path == image_path:
+            return dataset[i]
+    return None
+
+
+def plot_images_in_grid(axes: List[List[Axes]], images: List[np.ndarray]) -> None:
+    col_num = len(axes)
+    row_num = len(axes[0])
+    if len(images) > col_num * row_num:
+        raise ValueError(
+            f"Cannot draw {len(images)} images on {col_num}x{row_num} grid"
+        )
+    for image_index, image in enumerate(images):
+        i, j = np.unravel_index(image_index, (col_num, row_num))
+        axes[i][j].imshow(image)
+    # turn off axis
+    for i in range(col_num):
+        for j in range(row_num):
+            axes[i][j].axis("off")
+    # return axes
