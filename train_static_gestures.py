@@ -1,5 +1,7 @@
 import os
+from neptune.utils import stringify_unsupported
 import random
+from omegaconf import DictConfig
 import cv2
 from PIL import Image
 from matplotlib.axes._axes import Axes
@@ -50,9 +52,10 @@ from general.data_structures.model_line import ModelLine
 from general.data_structures.data_split import DataSplit
 import torchvision.transforms as tf
 from static_gesture_classification.data_loading.load_datasets import (
-    load_train_dataset,
+    load_full_gesture_dataset,
     get_dataset_subset_with_gesture,
     get_dataset_unique_labels,
+    load_gesture_datasets,
 )
 from general.datasets.read_meta_dataset import (
     ReadMetaSubset,
@@ -70,6 +73,10 @@ from general.utils import TorchNormalizeInverse
 from static_gesture_classification.data_loading.transform_applier import (
     TransformApplier,
 )
+from hydra.core.hydra_config import HydraConfig
+import matplotlib
+
+matplotlib.use("Agg")
 
 
 os.environ["HYDRA_FULL_ERROR"] = "1"
@@ -151,8 +158,8 @@ class DummyInferenceCallback(Callback):
     def on_validation_epoch_end(
         self, trainer: "pl.Trainer", pl_module: "pl.LightningModule"
     ) -> None:
-        logits = pl_module.model(self.dummy_input)
-        json_serializible_logits = logits.tolist()
+        logits = pl_module.model(self.dummy_input.to(pl_module.device))
+        json_serializible_logits = logits.cpu().tolist()
         output_path: str = os.path.join(
             self.save_root, f"{pl_module.current_epoch:04d}.json"
         )
@@ -172,7 +179,7 @@ def get_dataset_subset_with_label(dataset, label):
 
 
 def get_mini_train_dataset() -> ReadMetaDataset:
-    dataset = load_train_dataset()
+    dataset = load_full_gesture_dataset()
     dataset_concat_target = []
     for gesture in StaticGesture:
         label_subset = get_dataset_subset_with_gesture(dataset=dataset, label=gesture)
@@ -279,6 +286,15 @@ def log_info_about_datasets_to_neptune(
     )
 
 
+def log_dict_config_to_neptune(cfg: DictConfig, prefix: str, neptune_run: Run):
+    if not isinstance(cfg, DictConfig):
+        neptune_run[prefix] = stringify_unsupported(cfg)
+        return
+    for k, v in cfg.items():
+        extended_prefix = prefix + "/" + k if prefix else k
+        log_dict_config_to_neptune(v, extended_prefix, neptune_run)
+
+
 @hydra.main(
     config_path=STATIC_GESTURE_CFG_ROOT,
     config_name=STATIC_GESTURE_CFG_NAME,
@@ -289,16 +305,20 @@ def train_static_gesture(cfg: StaticGestureConfig):
         api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIxNmEzZDc3Mi1kNDg4LTQ2MjgtOGU4MS1jZDlhZDM2OTkyM2MifQ==",
         project="longarya/StaticGestureClassification",
         tags=["training", "resnet18"],
-        log_model_checkpoints=True,
+        log_model_checkpoints=False,
     )
     run_id: str = neptune_logger.experiment["sys/id"].fetch()
     model_line_path: str = os.path.join(TRAIN_RESULTS_ROOT, run_id)
     model_line: ModelLine = ModelLine(model_line_path)
     lightning_classifier = StaticGestureClassifier(cfg, results_location=model_line)
-
-    train_dataset = get_mini_train_dataset()  # FIXME use actual functions
-    val_dataset = get_mini_train_dataset()
+    log_dict_config_to_neptune(
+        cfg=cfg, prefix="conf", neptune_run=neptune_logger.experiment
+    )
+    train_dataset, val_dataset = load_gesture_datasets(
+        amount_per_gesture_train=200, amount_per_gesture_val=70
+    )
     augmentations = init_augmentations_from_config(augs_cfg=cfg.augs)
+
     train_dataset = TransformApplier(
         dataset=train_dataset, transformation=augmentations[DataSplit.TRAIN]
     )
@@ -332,8 +352,10 @@ def train_static_gesture(cfg: StaticGestureConfig):
     trainer = pl.Trainer(
         logger=neptune_logger,
         log_every_n_steps=1,
-        max_epochs=3,
+        max_epochs=100,
         callbacks=[dummy_inference_callback, model_ckpt_callback],
+        num_sanity_val_steps=0,
+        gpus=[0],
     )
     train_dataloader = DataLoader(
         dataset=train_dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
@@ -365,6 +387,4 @@ def test_output(cfg: StaticGestureConfig):
     print(y)
 
 
-# test_augmentations()
-# train_static_gesture()
-test_output()
+train_static_gesture()
