@@ -11,7 +11,7 @@ from static_gesture_classification.data_loading.custom_dataset import (
 from general.datasets.read_meta_dataset import ReadMetaDataset, ReadMetaConcatDataset
 from static_gesture_classification.static_gesture import StaticGesture
 from general.datasets.read_meta_dataset import ReadMetaSubset
-from typing import List
+from typing import List, Tuple
 
 
 def get_dataset_subset_with_gesture(dataset, label: StaticGesture):
@@ -45,7 +45,7 @@ def load_custom_train_dataset() -> ReadMetaDataset:
     return custom_train_dataset
 
 
-def load_train_dataset() -> ReadMetaDataset:
+def load_full_gesture_dataset() -> ReadMetaDataset:
     ndrczc_dataset = compose_ndrczc_dataset_for_static_gesture_classification(
         NDRCZC_DATA_ROOT
     )
@@ -54,5 +54,26 @@ def load_train_dataset() -> ReadMetaDataset:
     return train_dataset
 
 
-def load_val_dataset():
-    pass
+def load_gesture_datasets(
+    amount_per_gesture_train: int, amount_per_gesture_val: int
+) -> Tuple[ReadMetaDataset, ReadMetaDataset]:
+    train_dataset_materials: List[ReadMetaDataset] = []
+    val_dataset_materials: List[ReadMetaDataset] = []
+    full_dataset = load_full_gesture_dataset()
+    for gesture in StaticGesture:
+        gesture_subset = get_dataset_subset_with_gesture(
+            dataset=full_dataset, label=gesture
+        )
+        train_indexes = list(range(amount_per_gesture_train))
+        val_indexes = list(
+            range(
+                amount_per_gesture_train,
+                amount_per_gesture_train + amount_per_gesture_val,
+            )
+        )
+        train_dataset_materials.append(ReadMetaSubset(gesture_subset, train_indexes))
+        val_dataset_materials.append(ReadMetaSubset(gesture_subset, val_indexes))
+
+    train_dataset = ReadMetaConcatDataset(train_dataset_materials)
+    val_dataset = ReadMetaConcatDataset(val_dataset_materials)
+    return train_dataset, val_dataset
