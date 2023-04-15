@@ -1,5 +1,7 @@
 import sys
 import torch
+from neptune.new.run import Run
+from neptune.utils import stringify_unsupported
 from torchmetrics.classification import BinaryPrecisionRecallCurve
 from matplotlib.axes._axes import Axes
 import matplotlib.pyplot as plt
@@ -16,7 +18,7 @@ import pandas as pd
 from static_gesture_classification.static_gesture import StaticGesture
 import seaborn as sns
 from dataclasses import dataclass
-from typing import Iterable, List, Dict, Tuple
+from typing import Iterable, List, Dict, Tuple, Union, Mapping, Any
 
 
 @dataclass
@@ -174,3 +176,28 @@ def get_pr_curves_for_gestures(
         gesture_pr_curve = compute_pr_curve_for_gesture(classification_results, gesture)
         pr_curves[gesture] = gesture_pr_curve
     return pr_curves
+
+
+def log_dict_like_structure_to_neptune(
+    dict_like_structure: Union[Mapping, Any],
+    neptune_root: str,
+    neptune_run: Run,
+    log_as_sequence: bool,
+):
+    """
+    Recursively logs dict like structure to neptune run. Supports nested dict, every
+    value will be logged at the path: prefix/k1/k2../kn/ such that value = cfg[k1][k2]...[kn].
+    Values are logged either as a sequence or as a single value, depending on log_as_sequence argument.
+    """
+    if not isinstance(dict_like_structure, Mapping):
+        logged_value = stringify_unsupported(dict_like_structure)
+        if log_as_sequence:
+            neptune_run[neptune_root].append(logged_value)
+        else:
+            neptune_run[neptune_root] = logged_value
+        return
+    for k, v in dict_like_structure.items():
+        extended_prefix = neptune_root + "/" + k if neptune_root else k
+        log_dict_like_structure_to_neptune(
+            v, extended_prefix, neptune_run, log_as_sequence
+        )
