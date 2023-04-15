@@ -19,6 +19,7 @@ from static_gesture_classification.static_gesture import StaticGesture
 import seaborn as sns
 from dataclasses import dataclass
 from typing import Iterable, List, Dict, Tuple, Union, Mapping, Any
+from static_gesture_classification.classification_results_views import get_gesture_view
 
 
 @dataclass
@@ -116,20 +117,6 @@ def get_combined_f1_curves_plot(
         )
     plot_axis.legend()
     return plot_axis
-
-
-def get_gesture_view(
-    classification_results: ClassificationResultsDataframe,
-    target_gesture: StaticGesture,
-) -> ClassificationResultsDataframe:
-    """Return only part where either prediction or ground true is target gesture"""
-    mask = classification_results.apply(
-        lambda row: row.ground_true == target_gesture.name
-        or row.prediction == target_gesture.name,
-        axis=1,
-    )
-    view = classification_results[mask]
-    return view
 
 
 def compute_pr_curve_for_gesture(

@@ -77,4 +77,3 @@ def plot_images_in_grid(axes: List[List[Axes]], images: List[np.ndarray]) -> Non
     for i in range(col_num):
         for j in range(row_num):
             axes[i][j].axis("off")
-    # return axes
