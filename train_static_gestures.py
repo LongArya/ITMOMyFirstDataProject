@@ -1,4 +1,5 @@
 import os
+from itertools import product
 import random
 from sklearn.metrics import classification_report
 from omegaconf import DictConfig
@@ -8,6 +9,7 @@ from matplotlib.axes._axes import Axes
 import json
 from torchmetrics.classification import BinaryPrecisionRecallCurve
 from neptune.types import File
+from general.utils import plot_images_in_grid, get_sample_with_image_path
 from static_gesture_classification.metrics_utils import (
     log_dict_like_structure_to_neptune,
 )
@@ -20,13 +22,14 @@ import pandas as pd
 import hydra
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from typing import Dict, Any, List, Callable, Iterable, Mapping, Union
+from typing import Dict, Any, List, Callable, Iterable, Mapping, Union, Optional
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import NeptuneLogger
 from static_gesture_classification.static_gesture_classifer import (
     StaticGestureClassifier,
+    init_augmentations_from_config,
 )
 from static_gesture_classification.static_gesture import StaticGesture
 from static_gesture_classification.config import StaticGestureConfig
@@ -65,8 +68,10 @@ from general.utils import TorchNormalizeInverse
 from static_gesture_classification.data_loading.transform_applier import (
     TransformApplier,
 )
-from hydra.core.hydra_config import HydraConfig
-
+from static_gesture_classification.classification_results_views import (
+    get_gt_pred_combination_view,
+    get_fails_view,
+)
 import matplotlib
 
 matplotlib.use("Agg")
@@ -76,48 +81,6 @@ os.environ["HYDRA_FULL_ERROR"] = "1"
 
 cs = ConfigStore.instance()
 cs.store(name=STATIC_GESTURE_CFG_NAME, node=StaticGestureConfig)
-
-
-def init_augmentations_from_config(
-    augs_cfg: AugsConfig,
-) -> Dict[DataSplit, Callable[[Image.Image], torch.Tensor]]:
-    """Inits augmentations for each"""
-    resize = tf.Resize(augs_cfg.input_resolution)
-    normalization = tf.Compose(
-        [
-            tf.ToTensor(),
-            tf.Normalize(
-                mean=augs_cfg.normalization_mean, std=augs_cfg.normalization_std
-            ),
-        ]
-    )
-    augmentation_transform = tf.Compose(
-        [
-            tf.ColorJitter(
-                brightness=augs_cfg.brightness_factor,
-                contrast=augs_cfg.contrast_factor,
-                saturation=augs_cfg.saturation_contrast,
-                hue=augs_cfg.hue_contrast,
-            ),
-            tf.RandomAffine(
-                degrees=augs_cfg.rotation_range_angles_degrees,
-                translate=augs_cfg.translation_range_imsize_fractions,
-                scale=augs_cfg.scaling_range_factors,
-                shear=augs_cfg.shear_x_axis_degrees_range,
-            ),
-        ]
-    )
-    val_aug = tf.Compose([resize, normalization])
-    train_aug = tf.Compose(
-        [
-            resize,
-            tf.RandomApply(
-                transforms=[augmentation_transform], p=augs_cfg.augmentation_probability
-            ),
-            normalization,
-        ]
-    )
-    return {DataSplit.TRAIN: train_aug, DataSplit.VAL: val_aug}
 
 
 def custom_collate(batch: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -160,15 +123,6 @@ class DummyInferenceCallback(Callback):
             json.dump({"dummy_input_logits": json_serializible_logits}, f, indent=2)
         # save logits to neptune
         return super().on_validation_epoch_end(trainer, pl_module)
-
-
-def get_dataset_subset_with_label(dataset, label):
-    indexes = []
-    for i in range(len(dataset)):
-        meta = dataset.read_meta(i)
-        if meta["label"] == label:
-            indexes.append(i)
-    return ReadMetaSubset(dataset, indexes)
 
 
 def get_mini_train_dataset() -> ReadMetaDataset:
@@ -279,6 +233,39 @@ def log_info_about_datasets_to_neptune(
     )
 
 
+def generate_failure_cases_images(
+    root: str,
+    dataframe_predictions: ClassificationResultsDataframe,
+    dataset: ReadMetaSubset,
+) -> None:
+    grid_size = (5, 5)
+    grid_images_num = grid_size[0] * grid_size[1]
+    for gt, pred in product(list(StaticGesture), list(StaticGesture), repeat=1):
+        if gt == pred:
+            continue
+        fails_view = get_gt_pred_combination_view(dataframe_predictions, gt, pred)
+        failed_images_paths: List[str] = fails_view.image_path.tolist()
+        samples_with_failed_images: List[Dict] = [
+            get_sample_with_image_path(dataset=dataset, image_path=image_path)
+            for image_path in failed_images_paths
+        ]
+        failed_images = [sample["image"] for sample in samples_with_failed_images]
+        if len(samples_with_failed_images) == 0:
+            continue
+
+        title = f"{gt.name}_as_{pred.name}"
+        save_dir = os.path.join(root, title)
+        os.makedirs(save_dir, exist_ok=True)
+
+        for plot_num, index in enumerate(range(0, len(failed_images), grid_images_num)):
+            grid_images = failed_images[index : index + grid_images_num]
+            fig, axes = plt.subplots(*grid_size)
+            plot_images_in_grid(axes=axes, images=grid_images)
+            fig.suptitle(title)
+            plt.savefig(fname=os.path.join(save_dir, f"{title}_{plot_num}.png"))
+            plt.close(fig)
+
+
 @hydra.main(
     config_path=STATIC_GESTURE_CFG_ROOT,
     config_name=STATIC_GESTURE_CFG_NAME,
@@ -351,10 +338,18 @@ def train_static_gesture(cfg: StaticGestureConfig):
         gpus=[0],
     )
     train_dataloader = DataLoader(
-        dataset=train_dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
+        dataset=train_dataset,
+        batch_size=16,
+        num_workers=0,
+        collate_fn=custom_collate,
+        shuffle=True,
     )
     val_dataloader = DataLoader(
-        dataset=val_dataset, batch_size=16, num_workers=0, collate_fn=custom_collate
+        dataset=val_dataset,
+        batch_size=16,
+        num_workers=0,
+        collate_fn=custom_collate,
+        shuffle=False,
     )
     trainer.fit(
         model=lightning_classifier,
@@ -370,14 +365,54 @@ def train_static_gesture(cfg: StaticGestureConfig):
 )
 def test_output(cfg: StaticGestureConfig):
     model = StaticGestureClassifier.load_from_checkpoint(
-        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-54\\checkpoints\\checkpoint_epoch=00-mAP=0.87.ckpt",
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\checkpoints\\checkpoint_epoch=06-val_weighted_F1=0.87.ckpt",
         cfg=cfg,
         results_location=None,
     )
-    x = torch.zeros((1, 3, 224, 224))
     model.eval()
-    y = model(x)
-    print(y)
+    model.to("cuda")
+    val_transform = init_augmentations_from_config(cfg.augs)[DataSplit.VAL]
+    full_ds = load_full_gesture_dataset()
+    full_ds = TransformApplier(dataset=full_ds, transformation=val_transform)
+    im_path = (
+        "e:\dev\MyFirstDataProject\Data\\ndrczc35bt-1\Subject3\Subject3\\523_color.png"
+    )
+    sample = get_sample_with_image_path(dataset=full_ds, image_path=im_path)
+    gesture, prob = model.get_gesture_prediction_for_single_input(sample["image"])
+    print(gesture, prob)
+    plt.imshow(
+        neutralize_image_normalization(
+            sample["image"],
+            mean=cfg.augs.normalization_mean,
+            std=cfg.augs.normalization_std,
+        )
+    )
+    plt.show()
 
 
-train_static_gesture()
+@hydra.main(
+    config_path=STATIC_GESTURE_CFG_ROOT,
+    config_name=STATIC_GESTURE_CFG_NAME,
+    version_base=None,
+)
+def failure_cases_generation(cfg: StaticGestureClassifier):
+    dataframe_predictions = pd.read_csv(
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
+        index_col=0,
+    )
+
+    dataset = load_full_gesture_dataset()
+    generate_failure_cases_images(
+        root="E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\FC_train",
+        dataframe_predictions=dataframe_predictions,
+        dataset=dataset,
+    )
+
+
+failure_cases_generation()
+# dataframe_predictions = pd.read_csv(
+#     "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
+#     index_col=0,
+# )
+# f_view = get_all_fails_view(dataframe_predictions)
+# print(f_view)
