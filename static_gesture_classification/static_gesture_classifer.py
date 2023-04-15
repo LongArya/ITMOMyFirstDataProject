@@ -1,7 +1,7 @@
 from torchvision.models import resnet18
 from neptune.types import File
 import matplotlib.pyplot as plt
-from dataclasses import dataclass
+from sklearn.metrics import classification_report
 import os
 import numpy as np
 import torch
@@ -17,6 +17,9 @@ from general.data_structures.data_split import DataSplit
 from static_gesture_classification.static_gesture import StaticGesture
 from static_gesture_classification.classification_results_dataframe import (
     ClassificationResultsDataframe,
+)
+from static_gesture_classification.metrics_utils import (
+    log_dict_like_structure_to_neptune,
 )
 from static_gesture_classification.metrics_utils import (
     compute_pr_curve_for_gesture,
@@ -169,62 +172,6 @@ class StaticGestureClassifier(pl.LightningModule):
         self.logger.experiment[log_path].upload(File.as_image(fig))
         plt.close(fig)
 
-    def _log_pr_curves_to_neptune(
-        self,
-        pr_curves: Dict[StaticGesture, PRCurve],
-        neptune_root: str,
-        save_common_plot_only: bool,
-    ):
-        """Logs plots of Precision recall curve for each class to neptune run"""
-        # log individual plots
-        if not save_common_plot_only:
-            for gesture, curve in pr_curves.items():
-                gesture_log_path = f"{neptune_root}/{gesture.name}"
-                fig, gesture_plot_ax = plt.subplots()
-                gesture_plot_ax = get_pr_curve_plot(
-                    plot_axis=gesture_plot_ax, pr_curve=curve
-                )
-                self.logger.experiment[gesture_log_path].upload(File.as_image(fig))
-                plt.close(fig)
-
-        # log combined plots
-        fig, combined_gestures_ax = plt.subplots()
-        combined_gestures_ax = get_combined_pr_curves_plot(
-            plot_axis=combined_gestures_ax, pr_curves=pr_curves
-        )
-        combined_plot_log_path = f"{neptune_root}/combined_plot"
-        self.logger.experiment[combined_plot_log_path].upload(File.as_image(fig))
-        plt.close(fig)
-
-    def _log_f1_curves_to_neptune(
-        self,
-        f1_curves: Dict[StaticGesture, Tuple[Iterable[float], Iterable[float]]],
-        neptune_root: str,
-        save_common_plot_only: bool,
-    ) -> None:
-        """Logs plots of F1 score curves for each class to neptune run"""
-        # log individual plots
-        if not save_common_plot_only:
-            for gesture, (thresholds, f1_curve_values) in f1_curves.items():
-                fig, gesture_f1_curve_ax = plt.subplots()
-                gesture_f1_curve_ax = get_f1_curve_plot(
-                    plot_axis=gesture_f1_curve_ax,
-                    f1_score_values=f1_curve_values,
-                    thresholds=thresholds,
-                )
-                gesture_log_path = f"{neptune_root}/{gesture.name}"
-                self.logger.experiment[gesture_log_path].upload(File.as_image(fig))
-                plt.close(fig)
-
-        # log combined plots
-        fig, combined_gestures_ax = plt.subplots()
-        combined_gestures_ax = get_combined_f1_curves_plot(
-            plot_axis=combined_gestures_ax, f1_curves=f1_curves
-        )
-        combined_plot_log_path = f"{neptune_root}/combined_plot"
-        self.logger.experiment[combined_plot_log_path].upload(File.as_image(fig))
-        plt.close(fig)
-
     def _log_validation_metrics(
         self, val_predictions: ClassificationResultsDataframe
     ) -> None:
@@ -237,51 +184,22 @@ class StaticGestureClassifier(pl.LightningModule):
             classification_results=val_predictions,
             log_path=conf_matrix_neptune_path,
         )
-        save_only_common_plots = True  # FIXME specify somewhere
-        # log pr curves
-        pr_curves: Dict[StaticGesture, PRCurve] = get_pr_curves_for_gestures(
-            classification_results=val_predictions
+        # log classification report
+        gt = val_predictions.ground_true.tolist()
+        pred = val_predictions.prediction.tolist()
+        labels = [g.name for g in StaticGesture]
+        val_classification_report = classification_report(
+            y_true=gt, y_pred=pred, labels=labels, output_dict=True
         )
-        self._log_pr_curves_to_neptune(
-            pr_curves=pr_curves,
-            neptune_root=f"val/figures/PR_curves/{self.current_epoch:04d}",
-            save_common_plot_only=save_only_common_plots,
+        log_dict_like_structure_to_neptune(
+            dict_like_structure=val_classification_report,
+            neptune_root="val/classification_report",
+            neptune_run=self.logger.experiment,
+            log_as_sequence=True,
         )
-        # log f1 scores and thresholds
-
-        f1_curves: Dict[StaticGesture, Tuple[Iterable[float], Iterable[float]]] = {}
-        max_f1_scores: List[float] = []
-        for gesture, pr_curve in pr_curves.items():
-            f1_curve_values = get_f1_curve_values_from_pr_curve(pr_curve)
-            f1_curves[gesture] = (pr_curve.thresholds, f1_curve_values)
-            optimal_f1_score_index = np.argmax(f1_curve_values)
-            opitmal_f1 = f1_curve_values[optimal_f1_score_index]
-            optimal_thrd = pr_curve.thresholds[optimal_f1_score_index]
-            self.logger.experiment[f"val/max_f1/{gesture.name}"].append(opitmal_f1)
-            self.logger.experiment[f"val/optimal_thrd/{gesture.name}"].append(
-                optimal_thrd
-            )
-
-        mean_f1 = np.mean(max_f1_scores)
-
-        # TODO log max f1 and corresponding threshold
-        self._log_f1_curves_to_neptune(
-            f1_curves=f1_curves,
-            neptune_root=f"val/figures/F1_curves/{self.current_epoch:04d}",
-            save_common_plot_only=save_only_common_plots,
+        self.log(
+            "val_weighted_F1", val_classification_report["weighted avg"]["f1-score"]
         )
-        # log mAP
-        AP_scores: List[float] = []
-        for gesture in StaticGesture:
-            AP_score_for_gesture = compute_AP_for_gesture(
-                results=val_predictions, target_gesture=gesture
-            )
-            self.logger.experiment[f"val/AP/{gesture.name}"].append(
-                AP_score_for_gesture
-            )
-            AP_scores.append(AP_score_for_gesture)
-        mAP = np.mean(AP_scores)
-        self.log("mAP", mAP)
 
     def on_validation_epoch_end(self) -> None:
         # log metrics to neptune
