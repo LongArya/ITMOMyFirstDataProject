@@ -24,18 +24,7 @@ os.environ["HYDRA_FULL_ERROR"] = "1"
 cs = ConfigStore.instance()
 cs.store(name=STATIC_GESTURE_CFG_NAME, node=StaticGestureConfig)
 from general.utils import TorchNormalizeInverse
-
-
-def neutralize_image_normalization(
-    image_tensor: torch.Tensor, mean: Iterable[float], std: Iterable[float]
-) -> np.ndarray:
-    inverse_normalization = TorchNormalizeInverse(mean=mean, std=std)
-    denormalized_tensor = inverse_normalization(image_tensor)
-    denormalized_tensor *= 255
-    denormalized_tensor = torch.permute(denormalized_tensor, (1, 2, 0))
-    image: np.ndarray = denormalized_tensor.numpy()
-    image = image.astype(np.uint8)
-    return image
+from train_static_gestures import neutralize_image_normalization
 
 
 class RealTimeDemo:
