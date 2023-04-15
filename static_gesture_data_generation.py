@@ -1,4 +1,5 @@
 import cv2
+import matplotlib.pyplot as plt
 import json
 import os
 import numpy as np
@@ -8,14 +9,128 @@ from static_gesture_classification.static_gesture import StaticGesture
 from static_gesture_classification.custom_static_gesure_record import (
     CustomStaticGestureRecord,
 )
-from const import CUSTOM_DATA_ROOT
+from static_gesture_classification.data_loading.custom_dataset import (
+    CustomRecordDataset,
+)
+from const import (
+    CUSTOM_TRAIN_ROOT,
+    CUSTOM_VAL_ROOT,
+    CUSTOM_DATA_ROOT,
+    CUSTOM_VAL_VIZ_ROOT,
+    CUSTOM_TRAIN_VIZ_ROOT,
+    CUSTOM_PRESPLIT_ROOT,
+)
+from glob import glob
+from matplotlib.axes._axes import Axes
+from general.utils import plot_images_in_grid
+from sklearn.model_selection import train_test_split
+import shutil
+
+
+def generate_plot_for_records(
+    records: List[CustomStaticGestureRecord], axes: List[List[Axes]]
+) -> Axes:
+    col_num = len(axes)
+    row_num = len(axes[0])
+    images: List[np.ndarray] = []
+    ds: CustomRecordDataset
+    for record in records:
+        ds = CustomRecordDataset(record)
+        middle_sample = ds[len(ds) // 2]
+        images.append(middle_sample["image"])
+    plot_images_in_grid(axes=axes, images=images)
+    for grid_tile_index, record in enumerate(records):
+        ds = CustomRecordDataset(record)
+        i, j = np.unravel_index(grid_tile_index, (col_num, row_num))
+        axes[i][j].set_title(f"{len(ds)}")
+
+
+def spawn_record_from_images_and_meta(
+    images_paths: List[str], meta_path: str, new_record_parent_folder: str
+):
+    new_record_root = get_new_pattern_name_folder(
+        root=new_record_parent_folder, pattern="record"
+    )
+    new_record = CustomStaticGestureRecord(new_record_root)
+    shutil.copy(src=meta_path, dst=new_record.meta_path)
+    for image_path in images_paths:
+        shutil.move(src=image_path, dst=new_record.new_image_path)
+
+
+def split_record_on_train_val(
+    record: CustomStaticGestureRecord, train_part_size: float
+):
+    images_paths = record.images_paths
+    train_images, val_images = train_test_split(
+        images_paths, train_size=train_part_size
+    )
+    spawn_record_from_images_and_meta(
+        images_paths=train_images,
+        meta_path=record.meta_path,
+        new_record_parent_folder=CUSTOM_TRAIN_ROOT,
+    )
+    spawn_record_from_images_and_meta(
+        images_paths=val_images,
+        meta_path=record.meta_path,
+        new_record_parent_folder=CUSTOM_VAL_ROOT,
+    )
+
+
+def spawn_new_train_val_records_from_presplit_material(train_part_size: float):
+    presplit_records_roots = glob(os.path.join(CUSTOM_PRESPLIT_ROOT, "*"))
+    presplit_records = [
+        CustomStaticGestureRecord(root) for root in presplit_records_roots
+    ]
+    for record in presplit_records:
+        split_record_on_train_val(record=record, train_part_size=train_part_size)
+    shutil.rmtree(CUSTOM_PRESPLIT_ROOT)
+    os.makedirs(CUSTOM_PRESPLIT_ROOT)
+
+
+def visualize_records_content_for_each_gesture(records_root: str, output_root: str):
+    """For each recorded gesture write"""
+    grid_size = (5, 5)
+    grid_volume = grid_size[0] * grid_size[1]
+    records_paths: List[str] = glob(os.path.join(records_root, "*"))
+    records: List[CustomStaticGestureRecord] = [
+        CustomStaticGestureRecord(record_path) for record_path in records_paths
+    ]
+    for gesture in StaticGesture:
+        gesture_records: List[CustomStaticGestureRecord] = list(
+            filter(lambda record: record.meta_gesture == gesture, records)
+        )
+        if len(gesture_records) > grid_volume:
+            raise NotImplementedError(
+                f"{len(gesture_records)} plots for {gesture.name} will not be drawn, due to grid volume limit {grid_volume}"
+            )
+        if not gesture_records:
+            continue
+        fig, axes = plt.subplots(*grid_size)
+        generate_plot_for_records(gesture_records, axes)
+        plt.savefig(fname=os.path.join(output_root, f"{gesture.name}.png"))
+        plt.close(fig)
+
+
+def visualize_current_custom_dataset_content():
+    if os.path.exists(CUSTOM_TRAIN_VIZ_ROOT):
+        shutil.rmtree(CUSTOM_TRAIN_VIZ_ROOT)
+    os.makedirs(CUSTOM_TRAIN_VIZ_ROOT)
+    if os.path.exists(CUSTOM_VAL_VIZ_ROOT):
+        shutil.rmtree(CUSTOM_VAL_VIZ_ROOT)
+    os.makedirs(CUSTOM_VAL_VIZ_ROOT)
+    visualize_records_content_for_each_gesture(
+        records_root=CUSTOM_TRAIN_ROOT, output_root=CUSTOM_TRAIN_VIZ_ROOT
+    )
+    visualize_records_content_for_each_gesture(
+        records_root=CUSTOM_VAL_ROOT, output_root=CUSTOM_VAL_VIZ_ROOT
+    )
 
 
 class StaticGestureRecorder:
     def __init__(self):
         self.web_camera_capturer = cv2.VideoCapture(0)
         self._window_name = "StaticGestureRecorder"
-        self._window = cv2.namedWindow(self._window_name, cv2.WINDOW_FULLSCREEN)
+        self._window = cv2.namedWindow(self._window_name, cv2.WINDOW_NORMAL)
         self.frame_width, self.frame_height = self._get_web_camera_frame_resolution()
         self._box_side_pixel_length = 10
         self._box_x_position = 0
@@ -50,7 +165,7 @@ class StaticGestureRecorder:
         cv2.createTrackbar(
             "Box side length",
             self._window_name,
-            0,
+            146,
             min(self.frame_height, self.frame_width),
             box_side_trackbar_callback,
         )
@@ -58,7 +173,7 @@ class StaticGestureRecorder:
         cv2.createTrackbar(
             "Box X",
             self._window_name,
-            0,
+            80,
             self.frame_width - 1,
             box_x_pos_trackbar_callback,
         )
@@ -66,7 +181,7 @@ class StaticGestureRecorder:
         cv2.createTrackbar(
             "Box Y",
             self._window_name,
-            0,
+            222,
             self.frame_height - 1,
             box_y_pos_trackbar_callback,
         )
@@ -185,10 +300,22 @@ class StaticGestureRecorder:
             cv2.waitKey(1)
 
 
-def main():
+def write_for_train():
     recorder = StaticGestureRecorder()
-    recorder.run(CUSTOM_DATA_ROOT)
+    recorder.run(CUSTOM_TRAIN_ROOT)
+
+
+def write_for_val():
+    recorder = StaticGestureRecorder()
+    recorder.run(CUSTOM_VAL_ROOT)
+
+
+def write_for_presplit():
+    recorder = StaticGestureRecorder()
+    recorder.run(CUSTOM_PRESPLIT_ROOT)
 
 
 if __name__ == "__main__":
-    main()
+    spawn_new_train_val_records_from_presplit_material(train_part_size=0.8)
+    # write_for_presplit()
+    # visualize_current_custom_dataset_content()
