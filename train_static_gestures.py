@@ -47,10 +47,10 @@ from general.data_structures.model_line import ModelLine
 from general.data_structures.data_split import DataSplit
 import torchvision.transforms as tf
 from static_gesture_classification.data_loading.load_datasets import (
-    load_full_gesture_dataset,
     get_dataset_subset_with_gesture,
     get_dataset_unique_labels,
-    load_gesture_datasets,
+    load_train_dataset,
+    load_val_dataset,
 )
 from general.datasets.read_meta_dataset import (
     ReadMetaSubset,
@@ -275,7 +275,7 @@ def train_static_gesture(cfg: StaticGestureConfig):
     neptune_logger = NeptuneLogger(
         api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIxNmEzZDc3Mi1kNDg4LTQ2MjgtOGU4MS1jZDlhZDM2OTkyM2MifQ==",
         project="longarya/StaticGestureClassification",
-        tags=["training", "resnet18"],
+        tags=[cfg.model.architecture],
         log_model_checkpoints=False,
     )
     run_id: str = neptune_logger.experiment["sys/id"].fetch()
@@ -288,11 +288,8 @@ def train_static_gesture(cfg: StaticGestureConfig):
         neptune_run=neptune_logger.experiment,
         log_as_sequence=False,
     )
-    train_dataset, val_dataset = load_gesture_datasets(
-        amount_per_gesture_train=200, amount_per_gesture_val=70
-    )
-    # train_dataset = get_mini_train_dataset()
-    # val_dataset = get_mini_train_dataset()
+    train_dataset = load_train_dataset()
+    val_dataset = load_val_dataset()
     augmentations = init_augmentations_from_config(augs_cfg=cfg.augs)
 
     train_dataset = TransformApplier(
@@ -308,7 +305,6 @@ def train_static_gesture(cfg: StaticGestureConfig):
         logged_samples_amount=10,
         augs_config=cfg.augs,
     )
-
     dummy_output_directory = os.path.join(model_line.root, "dummy_output")
     os.makedirs(dummy_output_directory, exist_ok=True)
 
@@ -390,29 +386,23 @@ def test_output(cfg: StaticGestureConfig):
     plt.show()
 
 
-@hydra.main(
-    config_path=STATIC_GESTURE_CFG_ROOT,
-    config_name=STATIC_GESTURE_CFG_NAME,
-    version_base=None,
-)
-def failure_cases_generation(cfg: StaticGestureClassifier):
-    dataframe_predictions = pd.read_csv(
-        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
-        index_col=0,
-    )
-
-    dataset = load_full_gesture_dataset()
-    generate_failure_cases_images(
-        root="E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\FC_train",
-        dataframe_predictions=dataframe_predictions,
-        dataset=dataset,
-    )
-
-
-failure_cases_generation()
-# dataframe_predictions = pd.read_csv(
-#     "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
-#     index_col=0,
+# @hydra.main(
+#     config_path=STATIC_GESTURE_CFG_ROOT,
+#     config_name=STATIC_GESTURE_CFG_NAME,
+#     version_base=None,
 # )
-# f_view = get_all_fails_view(dataframe_predictions)
-# print(f_view)
+# def failure_cases_generation(cfg: StaticGestureClassifier):
+#     dataframe_predictions = pd.read_csv(
+#         "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
+#         index_col=0,
+#     )
+
+#     dataset = load_full_gesture_dataset()
+#     generate_failure_cases_images(
+#         root="E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\FC_train",
+#         dataframe_predictions=dataframe_predictions,
+#         dataset=dataset,
+#     )
+
+
+train_static_gesture()
