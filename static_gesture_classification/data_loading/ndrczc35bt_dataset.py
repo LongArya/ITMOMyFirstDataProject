@@ -1,6 +1,7 @@
 import pandas as pd
 import os
-from typing import List
+from typing import List, Tuple
+from sklearn.model_selection import train_test_split
 from general.datasets.read_meta_dataset import (
     ReadMetaDataset,
     ReadMetaConcatDataset,
@@ -37,15 +38,15 @@ NDRCZC_PREFIX_TO_GESTURES_MAPPING: Dict[str, StaticGesture] = {
 
 class NdrczcMarkupTable(pd.DataFrame):
     @property
-    def image() -> pd.Series:
+    def image(self) -> pd.Series:
         ...
 
     @property
-    def gesture() -> pd.Series:
+    def gesture(self) -> pd.Series:
         ...
 
     @property
-    def bbox() -> pd.Series:
+    def bbox(self) -> pd.Series:
         ...
 
 
@@ -75,9 +76,10 @@ class NdrczczDatasetMetaResolver(ReadMetaDataset):
         return sample
 
 
+# FIXME dataset should get ready dataframe
 class NdrczcDataset(ReadMetaDataset):
-    def __init__(self, txt_meta_path: str) -> None:
-        self.meta_table = read_ndrczc_markup_in_train_ready_format(txt_meta_path)
+    def __init__(self, meta_table: NdrczcMarkupTable) -> None:
+        self.meta_table = meta_table
 
     def read_meta(self, index) -> Any:
         row = self.meta_table.iloc[index]
@@ -155,15 +157,13 @@ def read_ndrczc_markup_in_train_ready_format(txt_path: str) -> NdrczcMarkupTable
     return modified_table
 
 
-def compose_ndrczc_dataset_for_static_gesture_classification(
-    ndrczc_meta_root: str,
+def prepare_ndrczc_dataset_for_static_gesture_classification(
+    ndrczc_dataset: NdrczcDataset,
 ) -> ReadMetaDataset:
-    """Composes all ndrczc data, removes labels that are not fit for static gesture classification"""
-    all_files = traverse_all_files(ndrczc_meta_root)
-    all_txt_files = keep_files_with_extension(all_files, extension=".txt")
-    ndrczc_datasets = [NdrczcDataset(txt_file) for txt_file in all_txt_files]
-    ndrczc_dataset = ReadMetaConcatDataset(ndrczc_datasets)
-    # filter samples with banned labels
+    """
+    Prepares ndrczc for static gesture classification: Removes all banned labels,
+    and resolves labels to StaticGeture format
+    """
     kept_indexes: List[int] = []
     for index in range(len(ndrczc_dataset)):
         meta = ndrczc_dataset.read_meta(index)
@@ -171,6 +171,83 @@ def compose_ndrczc_dataset_for_static_gesture_classification(
         if label not in NDRCZC_BANNED_LABELS:
             kept_indexes.append(index)
 
-    ndrczc_dataset = ReadMetaSubset(ndrczc_dataset, indices=kept_indexes)
-    ndrczc_dataset = NdrczczDatasetMetaResolver(ndrczc_dataset)
+    valid_labels_subset = ReadMetaSubset(ndrczc_dataset, indices=kept_indexes)
+    dataset_with_resolved_labels = NdrczczDatasetMetaResolver(valid_labels_subset)
+    return dataset_with_resolved_labels
+
+
+def compose_ndrczc_dataset_for_static_gesture_classification(
+    ndrczc_meta_root: str,
+) -> ReadMetaDataset:
+    """Composes all ndrczc data, removes labels that are not fit for static gesture classification"""
+    all_files = traverse_all_files(ndrczc_meta_root)
+    all_txt_files = keep_files_with_extension(all_files, extension=".txt")
+    ndrczc_datasets = [
+        NdrczcDataset(read_ndrczc_markup_in_train_ready_format(txt_file))
+        for txt_file in all_txt_files
+    ]
+    ndrczc_dataset = ReadMetaConcatDataset(ndrczc_datasets)
+    # filter samples with banned labels
+    ndrczc_dataset = prepare_ndrczc_dataset_for_static_gesture_classification(
+        ndrczc_dataset
+    )
     return ndrczc_dataset
+
+
+def get_gesture_view(table: NdrczcMarkupTable, gesture: str) -> NdrczcMarkupTable:
+    return table[table.gesture == gesture]
+
+
+def get_table_meta_split_per_gesture(
+    ndrczc_table: NdrczcMarkupTable, train_part_size: float
+) -> Tuple[NdrczcMarkupTable, NdrczcMarkupTable]:
+    """
+    Gets views of each gesture in table, split each view in train/val proportion,
+    then combines these views into train, val split
+    """
+    train_split: NdrczcMarkupTable = pd.DataFrame(columns=["image", "gesture", "bbox"])
+    val_split: NdrczcMarkupTable = pd.DataFrame(columns=["image", "gesture", "bbox"])
+    gestures = ndrczc_table.gesture.tolist()
+    unique_gestures = list(set(gestures))
+    for gesture in unique_gestures:
+        gesture_view = get_gesture_view(ndrczc_table, gesture=gesture)
+        # If doing split is impossible use all data in train
+        try:
+            gesture_train_split, gesture_val_split = train_test_split(
+                gesture_view, train_size=train_part_size
+            )
+        except ValueError:
+            gesture_train_split = gesture_view.copy()
+            gesture_val_split = pd.DataFrame(columns=["image", "gesture", "bbox"])
+        train_split = pd.concat([train_split, gesture_train_split], ignore_index=True)
+        val_split = pd.concat([val_split, gesture_val_split], ignore_index=True)
+    return train_split, val_split
+
+
+def generate_global_train_val_split_for_ndrczz_dataset(
+    ndrczc_meta_root: str, output_root: str, train_part_size: float
+) -> None:
+    """Generates split for all Ndrczc dataset, such that for each gesture proportion train/val is kept"""
+    all_files = traverse_all_files(ndrczc_meta_root)
+    all_txt_files = keep_files_with_extension(all_files, extension=".txt")
+    global_train_split: NdrczcMarkupTable = pd.DataFrame(
+        columns=["image", "gesture", "bbox"]
+    )
+    global_val_split: NdrczcMarkupTable = pd.DataFrame(
+        columns=["image", "gesture", "bbox"]
+    )
+    for txt_file in all_txt_files:
+        current_table: NdrczcMarkupTable = read_ndrczc_markup_in_train_ready_format(
+            txt_path=txt_file
+        )
+        current_train_split, current_val_split = get_table_meta_split_per_gesture(
+            ndrczc_table=current_table, train_part_size=train_part_size
+        )
+        global_train_split = pd.concat(
+            [global_train_split, current_train_split], ignore_index=True
+        )
+        global_val_split = pd.concat(
+            [global_val_split, current_val_split], ignore_index=True
+        )
+    global_train_split.to_csv(os.path.join(output_root, "train.csv"))
+    global_val_split.to_csv(os.path.join(output_root, "val.csv"))
