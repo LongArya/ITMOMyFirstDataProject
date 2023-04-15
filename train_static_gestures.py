@@ -1,6 +1,6 @@
 import os
-from neptune.utils import stringify_unsupported
 import random
+from sklearn.metrics import classification_report
 from omegaconf import DictConfig
 import cv2
 from PIL import Image
@@ -9,16 +9,9 @@ import json
 from torchmetrics.classification import BinaryPrecisionRecallCurve
 from neptune.types import File
 from static_gesture_classification.metrics_utils import (
-    compute_pr_curve_for_gesture,
-    get_pr_curves_for_gestures,
-    get_pr_curve_plot,
-    generate_confusion_matrix_plot_from_classification_results,
-    get_combined_pr_curves_plot,
-    compute_AP_for_gesture,
-    get_f1_curve_plot,
-    get_f1_curve_values_from_pr_curve,
+    log_dict_like_structure_to_neptune,
 )
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint, LearningRateMonitor
 from neptune.types import File
 from matplotlib.axes._axes import Axes
 import torch
@@ -27,7 +20,7 @@ import pandas as pd
 import hydra
 from copy import deepcopy
 import matplotlib.pyplot as plt
-from typing import Dict, Any, List, Callable, Iterable
+from typing import Dict, Any, List, Callable, Iterable, Mapping, Union
 from hydra.core.config_store import ConfigStore
 from omegaconf import OmegaConf
 import pytorch_lightning as pl
@@ -46,7 +39,6 @@ from const import (
     IMAGENET_STD,
     RESNET18_INPUT_SIZE,
 )
-from torchvision.datasets import MNIST
 from torch.utils.data import Dataset, DataLoader, default_collate
 from general.data_structures.model_line import ModelLine
 from general.data_structures.data_split import DataSplit
@@ -74,6 +66,7 @@ from static_gesture_classification.data_loading.transform_applier import (
     TransformApplier,
 )
 from hydra.core.hydra_config import HydraConfig
+
 import matplotlib
 
 matplotlib.use("Agg")
@@ -286,15 +279,6 @@ def log_info_about_datasets_to_neptune(
     )
 
 
-def log_dict_config_to_neptune(cfg: DictConfig, prefix: str, neptune_run: Run):
-    if not isinstance(cfg, DictConfig):
-        neptune_run[prefix] = stringify_unsupported(cfg)
-        return
-    for k, v in cfg.items():
-        extended_prefix = prefix + "/" + k if prefix else k
-        log_dict_config_to_neptune(v, extended_prefix, neptune_run)
-
-
 @hydra.main(
     config_path=STATIC_GESTURE_CFG_ROOT,
     config_name=STATIC_GESTURE_CFG_NAME,
@@ -311,12 +295,17 @@ def train_static_gesture(cfg: StaticGestureConfig):
     model_line_path: str = os.path.join(TRAIN_RESULTS_ROOT, run_id)
     model_line: ModelLine = ModelLine(model_line_path)
     lightning_classifier = StaticGestureClassifier(cfg, results_location=model_line)
-    log_dict_config_to_neptune(
-        cfg=cfg, prefix="conf", neptune_run=neptune_logger.experiment
+    log_dict_like_structure_to_neptune(
+        dict_like_structure=cfg,
+        neptune_root="conf",
+        neptune_run=neptune_logger.experiment,
+        log_as_sequence=False,
     )
     train_dataset, val_dataset = load_gesture_datasets(
         amount_per_gesture_train=200, amount_per_gesture_val=70
     )
+    # train_dataset = get_mini_train_dataset()
+    # val_dataset = get_mini_train_dataset()
     augmentations = init_augmentations_from_config(augs_cfg=cfg.augs)
 
     train_dataset = TransformApplier(
@@ -340,20 +329,24 @@ def train_static_gesture(cfg: StaticGestureConfig):
         dummy_input=torch.zeros(1, 3, *cfg.augs.input_resolution),
         save_root=dummy_output_directory,
     )
+    lr_monitor_callback = LearningRateMonitor(
+        logging_interval="step", log_momentum=True
+    )
     model_ckpt_callback = ModelCheckpoint(
-        monitor="mAP",
+        monitor="val_weighted_F1",
         dirpath=model_line.checkpoints_root,
         mode="max",
         auto_insert_metric_name=True,
         every_n_epochs=1,
         save_on_train_epoch_end=False,
-        filename="checkpoint_{epoch:02d}-{mAP:.2f}",
+        filename="checkpoint_{epoch:02d}-{val_weighted_F1:.2f}",
+        save_top_k=3,
     )
     trainer = pl.Trainer(
         logger=neptune_logger,
         log_every_n_steps=1,
         max_epochs=100,
-        callbacks=[dummy_inference_callback, model_ckpt_callback],
+        callbacks=[dummy_inference_callback, model_ckpt_callback, lr_monitor_callback],
         num_sanity_val_steps=0,
         gpus=[0],
     )
