@@ -40,9 +40,11 @@ def generate_plot_for_records(
         images.append(middle_sample["image"])
     plot_images_in_grid(axes=axes, images=images)
     for grid_tile_index, record in enumerate(records):
+        record_basename = os.path.basename(record.root_folder)
+        record_num = int(record_basename.split("record_")[1])
         ds = CustomRecordDataset(record)
         i, j = np.unravel_index(grid_tile_index, (col_num, row_num))
-        axes[i][j].set_title(f"{len(ds)}")
+        axes[i][j].set_title(f"r{record_num}_{len(ds)}")
 
 
 def spawn_record_from_images_and_meta(
@@ -107,6 +109,8 @@ def visualize_records_content_for_each_gesture(records_root: str, output_root: s
             continue
         fig, axes = plt.subplots(*grid_size)
         generate_plot_for_records(gesture_records, axes)
+        fig.suptitle(gesture.name)
+        fig.tight_layout()
         plt.savefig(fname=os.path.join(output_root, f"{gesture.name}.png"))
         plt.close(fig)
 
@@ -130,7 +134,7 @@ class StaticGestureRecorder:
     def __init__(self):
         self.web_camera_capturer = cv2.VideoCapture(0)
         self._window_name = "StaticGestureRecorder"
-        self._window = cv2.namedWindow(self._window_name, cv2.WINDOW_NORMAL)
+        self._window = cv2.namedWindow(self._window_name, cv2.WINDOW_FULLSCREEN)
         self.frame_width, self.frame_height = self._get_web_camera_frame_resolution()
         self._box_side_pixel_length = 10
         self._box_x_position = 0
@@ -165,7 +169,7 @@ class StaticGestureRecorder:
         cv2.createTrackbar(
             "Box side length",
             self._window_name,
-            146,
+            50,
             min(self.frame_height, self.frame_width),
             box_side_trackbar_callback,
         )
@@ -181,7 +185,7 @@ class StaticGestureRecorder:
         cv2.createTrackbar(
             "Box Y",
             self._window_name,
-            222,
+            0,
             self.frame_height - 1,
             box_y_pos_trackbar_callback,
         )
@@ -316,6 +320,7 @@ def write_for_presplit():
 
 
 if __name__ == "__main__":
-    spawn_new_train_val_records_from_presplit_material(train_part_size=0.8)
+    # write_for_val()
+    # spawn_new_train_val_records_from_presplit_material(train_part_size=0.8)
     # write_for_presplit()
-    # visualize_current_custom_dataset_content()
+    visualize_current_custom_dataset_content()
