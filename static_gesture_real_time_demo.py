@@ -159,7 +159,7 @@ class RealTimeDemo:
 )
 def run_real_time_demo(cfg: StaticGestureConfig):
     model = StaticGestureClassifier.load_from_checkpoint(
-        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\checkpoints\\checkpoint_epoch=06-val_weighted_F1=0.87.ckpt",
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-87\\checkpoints\\checkpoint_epoch=12-val_weighted_F1=0.68.ckpt",
         cfg=cfg,
         results_location=None,
     )

@@ -76,7 +76,6 @@ class NdrczczDatasetMetaResolver(ReadMetaDataset):
         return sample
 
 
-# FIXME dataset should get ready dataframe
 class NdrczcDataset(ReadMetaDataset):
     def __init__(self, meta_table: NdrczcMarkupTable) -> None:
         self.meta_table = meta_table

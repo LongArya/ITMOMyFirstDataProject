@@ -405,4 +405,5 @@ def test_output(cfg: StaticGestureConfig):
 #     )
 
 
-train_static_gesture()
+if __name__ == "__main__":
+    train_static_gesture()
