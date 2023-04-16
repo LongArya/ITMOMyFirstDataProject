@@ -73,7 +73,6 @@ class HagridDataset(ReadMetaDataset):
                 gesture: StaticGesture = HAGRID_GESTURES_MAPPING[label]
                 meta_item = {
                     "image_path": image_path,
-                    "original_label": label,
                     "bbox": box,
                     "label": gesture.value,
                 }
