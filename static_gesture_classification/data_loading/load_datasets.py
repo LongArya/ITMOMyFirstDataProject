@@ -6,11 +6,19 @@ from static_gesture_classification.data_loading.ndrczc35bt_dataset import (
     NdrczcDataset,
     NdrczcMarkupTable,
 )
-from const import CUSTOM_DATA_ROOT, NDRCZC_DATA_ROOT
+from const import (
+    CUSTOM_DATA_ROOT,
+    NDRCZC_DATA_ROOT,
+    HAGRID_META_ROOT,
+    HAGRID_IMAGES_ROOT,
+)
 from static_gesture_classification.data_loading.custom_dataset import (
     CustomRecordDataset,
     CustomStaticGestureRecord,
 )
+from general.utils import traverse_all_files
+from general.data_structures.data_split import DataSplit
+from static_gesture_classification.data_loading.hagrid_dataset import HagridDataset
 from general.datasets.read_meta_dataset import ReadMetaDataset, ReadMetaConcatDataset
 from static_gesture_classification.static_gesture import StaticGesture
 from general.datasets.read_meta_dataset import ReadMetaSubset
@@ -85,15 +93,29 @@ def load_custom_val_dataset() -> ReadMetaDataset:
     return custom_val_dataset
 
 
+def compose_hagrid_dataset(data_split: DataSplit):
+    hagrid_json_files = traverse_all_files(HAGRID_META_ROOT)
+    hagrid_datasets: List[ReadMetaDataset] = []
+    for json_file in hagrid_json_files:
+        json_name = os.path.splitext(os.path.basename(json_file))[0]
+        image_folder = os.path.join(HAGRID_IMAGES_ROOT, json_name, data_split.name)
+        dataset = HagridDataset(image_folder=image_folder, json_file=json_file)
+        hagrid_datasets.append(dataset)
+    combined_dataset = ReadMetaConcatDataset(hagrid_datasets)
+    return combined_dataset
+
+
 def load_train_dataset() -> ReadMetaDataset:
     custom_train = load_custom_train_dataset()
     ndrczc_train = load_ndrczc_train_dataset()
-    train_ds = ReadMetaConcatDataset([custom_train, ndrczc_train])
+    hagrid_train = compose_hagrid_dataset(DataSplit.TRAIN)
+    train_ds = ReadMetaConcatDataset([custom_train, ndrczc_train, hagrid_train])
     return train_ds
 
 
 def load_val_dataset() -> ReadMetaDataset:
     custom_val = load_ndrczc_val_dataset()
     ndrczc_val = load_custom_val_dataset()
-    val_ds = ReadMetaConcatDataset([custom_val, ndrczc_val])
+    hagrid_val = compose_hagrid_dataset(DataSplit.VAL)
+    val_ds = ReadMetaConcatDataset([custom_val, ndrczc_val, hagrid_val])
     return val_ds
