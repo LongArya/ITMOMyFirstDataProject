@@ -66,7 +66,7 @@ def generate_confusion_matrix_plot_from_classification_results(
     conf_mat_dataframe: pd.DataFrame = pd.DataFrame(
         data=conf_mat, index=labels, columns=labels
     )
-    plot_axis = sns.heatmap(data=conf_mat_dataframe, ax=plot_axis, annot=True)
+    plot_axis = sns.heatmap(data=conf_mat_dataframe, ax=plot_axis, annot=True, fmt="g")
     return plot_axis
 
 
