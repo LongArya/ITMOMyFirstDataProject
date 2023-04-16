@@ -12,6 +12,13 @@ CUSTOM_VAL_VIZ_ROOT = os.path.join(CUSTOM_DATA_ROOT, "val_viz")
 CUSTOM_TRAIN_VIZ_ROOT = os.path.join(CUSTOM_DATA_ROOT, "train_viz")
 CUSTOM_PRESPLIT_ROOT = os.path.join(CUSTOM_DATA_ROOT, "presplit_data")
 
+HAGRID_DATA_ROOT = os.path.join(DATA_ROOT, "Hagrid_data")
+HAGRID_IMAGES_ROOT = os.path.join(HAGRID_DATA_ROOT, "subsample")
+HAGRID_META_ROOT = os.path.join(HAGRID_DATA_ROOT, "ann_subsample")
+
+YOLO_V7_INPUT_RESOLUTION = (320, 320)
+YOLO_V7_HAND_DETECTION = os.path.join(SCRIPT_DIR, "YoloV7_Tiny.onnx")
+
 TRAIN_RESULTS_ROOT = os.path.join(WORKSPACE_DIR, "training_results")
 STATIC_GESTURE_RESULTS_ROOT = os.path.join(
     TRAIN_RESULTS_ROOT, "static_gesture_classification"
