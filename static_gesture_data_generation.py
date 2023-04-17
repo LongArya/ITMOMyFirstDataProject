@@ -1,9 +1,12 @@
 import cv2
+import hydra
+import torch
+from PIL import Image
 import matplotlib.pyplot as plt
 import json
 import os
 import numpy as np
-from typing import Tuple, List, Optional
+from typing import Tuple, List, Optional, Callable
 from general.utils import get_new_pattern_name_folder
 from static_gesture_classification.static_gesture import StaticGesture
 from static_gesture_classification.custom_static_gesure_record import (
@@ -19,12 +22,25 @@ from const import (
     CUSTOM_VAL_VIZ_ROOT,
     CUSTOM_TRAIN_VIZ_ROOT,
     CUSTOM_PRESPLIT_ROOT,
+    STATIC_GESTURE_CFG_NAME,
+    STATIC_GESTURE_CFG_ROOT,
 )
 from glob import glob
 from matplotlib.axes._axes import Axes
 from general.utils import plot_images_in_grid
 from sklearn.model_selection import train_test_split
+from static_gesture_classification.static_gesture_classifer import (
+    StaticGestureClassifier,
+    init_augmentations_from_config,
+)
+from hydra.core.config_store import ConfigStore
+from general.data_structures.data_split import DataSplit
+from static_gesture_classification.config import StaticGestureConfig
 import shutil
+
+os.environ["HYDRA_FULL_ERROR"] = "1"
+cs = ConfigStore.instance()
+cs.store(name=STATIC_GESTURE_CFG_NAME, node=StaticGestureConfig)
 
 
 def generate_plot_for_records(
@@ -276,7 +292,71 @@ class StaticGestureRecorder:
         preprocessed_frame = np.fliplr(preprocessed_frame)
         return preprocessed_frame
 
-    def run(self, save_folder: str):
+    def _inference_current_crop(
+        self,
+        model: StaticGestureClassifier,
+        val_pipeline: Callable[[Image.Image], torch.Tensor],
+        bgr_frame: np.ndarray,
+    ) -> StaticGesture:
+        rgb_frame = cv2.cvtColor(bgr_frame, cv2.COLOR_BGR2RGB)
+        pil_image = Image.fromarray(rgb_frame, mode="RGB")
+        crop = pil_image.crop(self.current_rectangle)
+        nn_input = val_pipeline(crop)
+        gesture, score = model.get_gesture_prediction_for_single_input(nn_input)
+        return gesture
+
+    def write_data_of_specific_fails(
+        self,
+        save_folder: str,
+        model: StaticGestureClassifier,
+        val_pipeline: Callable[[Image.Image], torch.Tensor],
+        supposed_fail: Optional[StaticGesture] = None,
+    ) -> None:
+        """Writes data where model fails to predict supposed gesture, if supposed_fail is specified then
+        only frames where this value is predicted are written"""
+        prev_recording_state: bool = False
+        should_write_current_frame: bool = False
+        while True:
+            # read frame
+            ret, frame = self.web_camera_capturer.read()
+            if not ret:
+                raise ValueError("Invalid frame")
+            frame = self._preprocess_frame(frame)
+            prediction: StaticGesture = self._inference_current_crop(
+                model=model, val_pipeline=val_pipeline, bgr_frame=frame
+            )
+            viz = self._get_frame_visualuzation(frame)
+            viz = cv2.putText(
+                img=viz,
+                text=prediction.name,
+                org=(self.current_rectangle[0], self.current_rectangle[1]),
+                fontFace=cv2.FONT_HERSHEY_COMPLEX,
+                fontScale=1,
+                color=(0, 255, 0),
+            )
+            current_recording_state = self._is_recording
+            # handle start record
+            if current_recording_state and not prev_recording_state:
+                new_record_root = get_new_pattern_name_folder(
+                    root=save_folder, pattern=self._output_directory_pattern
+                )
+                self._current_record = CustomStaticGestureRecord(new_record_root)
+                self._save_meta_for_current_record()
+            # handle continuous recording
+            if current_recording_state and prev_recording_state:
+                should_write_current_frame = prediction != self._current_gesture
+                if supposed_fail is not None:
+                    should_write_current_frame = supposed_fail == prediction
+                if should_write_current_frame:
+                    cv2.imwrite(self._current_record.new_image_path, frame)
+            # handle end record
+            if not current_recording_state and prev_recording_state:
+                self._current_record = None
+            prev_recording_state = current_recording_state
+            cv2.imshow(self._window_name, viz)
+            cv2.waitKey(1)
+
+    def write_data(self, save_folder: str) -> None:
         prev_recording_state: bool = False
         while True:
             # read frame
@@ -306,17 +386,40 @@ class StaticGestureRecorder:
 
 def write_for_train():
     recorder = StaticGestureRecorder()
-    recorder.run(CUSTOM_TRAIN_ROOT)
+    recorder.write_data(CUSTOM_TRAIN_ROOT)
 
 
 def write_for_val():
     recorder = StaticGestureRecorder()
-    recorder.run(CUSTOM_VAL_ROOT)
+    recorder.write_data(CUSTOM_VAL_ROOT)
 
 
 def write_for_presplit():
     recorder = StaticGestureRecorder()
-    recorder.run(CUSTOM_PRESPLIT_ROOT)
+    recorder.write_data(CUSTOM_PRESPLIT_ROOT)
+
+
+@hydra.main(
+    config_path=STATIC_GESTURE_CFG_ROOT,
+    config_name=STATIC_GESTURE_CFG_NAME,
+    version_base=None,
+)
+def write_fails(cfg: StaticGestureConfig):
+    model = StaticGestureClassifier.load_from_checkpoint(
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-89\\checkpoints\\checkpoint_epoch=33-val_weighted_F1=0.74.ckpt",
+        cfg=cfg,
+        results_location=None,
+    )
+    model.eval()
+    model.to("cuda")
+    val_augs = init_augmentations_from_config(augs_cfg=cfg.augs)[DataSplit.VAL]
+    recorder = StaticGestureRecorder()
+    recorder.write_data_of_specific_fails(
+        save_folder=CUSTOM_TRAIN_ROOT,
+        model=model,
+        val_pipeline=val_augs,
+        supposed_fail=StaticGesture.THUMBS_DOWN,
+    )
 
 
 if __name__ == "__main__":
@@ -324,3 +427,4 @@ if __name__ == "__main__":
     # spawn_new_train_val_records_from_presplit_material(train_part_size=0.8)
     # write_for_presplit()
     visualize_current_custom_dataset_content()
+    # write_fails()
