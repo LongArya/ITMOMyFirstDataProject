@@ -41,6 +41,7 @@ from const import (
     IMAGENET_MEAN,
     IMAGENET_STD,
     RESNET18_INPUT_SIZE,
+    NEPTUNE_API_TOKEN_ENV,
 )
 from torch.utils.data import Dataset, DataLoader, default_collate
 from general.data_structures.model_line import ModelLine
@@ -273,9 +274,9 @@ def generate_failure_cases_images(
 )
 def train_static_gesture(cfg: StaticGestureConfig):
     neptune_logger = NeptuneLogger(
-        api_key="eyJhcGlfYWRkcmVzcyI6Imh0dHBzOi8vYXBwLm5lcHR1bmUuYWkiLCJhcGlfdXJsIjoiaHR0cHM6Ly9hcHAubmVwdHVuZS5haSIsImFwaV9rZXkiOiIxNmEzZDc3Mi1kNDg4LTQ2MjgtOGU4MS1jZDlhZDM2OTkyM2MifQ==",
+        api_key=os.getenv(NEPTUNE_API_TOKEN_ENV),
         project="longarya/StaticGestureClassification",
-        tags=[cfg.model.architecture],
+        tags=[cfg.model.architecture, "valid_run"],
         log_model_checkpoints=False,
     )
     run_id: str = neptune_logger.experiment["sys/id"].fetch()
@@ -351,6 +352,7 @@ def train_static_gesture(cfg: StaticGestureConfig):
         model=lightning_classifier,
         train_dataloaders=train_dataloader,
         val_dataloaders=val_dataloader,
+        ckpt_path="E:\\dev\\MyFirstDataProject\\training_results\\STAT-90\\checkpoints\\checkpoint_epoch=48-val_weighted_F1=0.87.ckpt",
     )
 
 
@@ -386,23 +388,24 @@ def test_output(cfg: StaticGestureConfig):
     plt.show()
 
 
-# @hydra.main(
-#     config_path=STATIC_GESTURE_CFG_ROOT,
-#     config_name=STATIC_GESTURE_CFG_NAME,
-#     version_base=None,
-# )
-# def failure_cases_generation(cfg: StaticGestureClassifier):
-#     dataframe_predictions = pd.read_csv(
-#         "E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\train_predictions\\0006.csv",
-#         index_col=0,
-#     )
+@hydra.main(
+    config_path=STATIC_GESTURE_CFG_ROOT,
+    config_name=STATIC_GESTURE_CFG_NAME,
+    version_base=None,
+)
+def failure_cases_generation(cfg: StaticGestureClassifier):
+    # checkpoint_epoch=33-val_weighted_F1=0.74.ckpt
+    dataframe_predictions = pd.read_csv(
+        "E:\\dev\\MyFirstDataProject\\training_results\\STAT-90\\val_predictions\\0048.csv",
+        index_col=0,
+    )
 
-#     dataset = load_full_gesture_dataset()
-#     generate_failure_cases_images(
-#         root="E:\\dev\\MyFirstDataProject\\training_results\\STAT-81\\FC_train",
-#         dataframe_predictions=dataframe_predictions,
-#         dataset=dataset,
-#     )
+    dataset = load_val_dataset()
+    generate_failure_cases_images(
+        root="E:\\dev\\MyFirstDataProject\\training_results\\STAT-90\\FC_val",
+        dataframe_predictions=dataframe_predictions,
+        dataset=dataset,
+    )
 
 
 if __name__ == "__main__":

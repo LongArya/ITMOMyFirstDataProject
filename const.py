@@ -27,6 +27,7 @@ STATIC_GESTURE_CFG_ROOT = os.path.join(
     WORKSPACE_DIR, "code", "static_gesture_classification", "conf"
 )
 STATIC_GESTURE_CFG_NAME = "base_static_gesture_config"
+NEPTUNE_API_TOKEN_ENV = "NEPTUNE_API_TOKEN"
 
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
