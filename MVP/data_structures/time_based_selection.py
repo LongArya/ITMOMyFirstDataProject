@@ -21,8 +21,10 @@ class TimeBasedSelection(Generic[T]):
 
     @property
     def is_active(self) -> bool:
-        return self.accumulated_time_seconds == self.time_requirement_seconds
+        return self.accumulated_time_seconds >= self.time_requirement_seconds
 
     @property
     def proportion_of_completed_time(self) -> float:
-        return self.accumulated_time_seconds / self.time_requirement_seconds
+        proportion = self.accumulated_time_seconds / self.time_requirement_seconds
+        proportion = min(proportion, 1)
+        return proportion
