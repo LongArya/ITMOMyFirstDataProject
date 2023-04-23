@@ -73,9 +73,11 @@ class HandDetectionState:
             tracked_obj.object.xyxy_box, track.last.object.xyxy_box
         )
         self.match_iou_thrd: float = 0.6
-        self.tracks_TTL_after_dissapearance_frames: int = 10
-        self.active_track: Optional[Track[GestureDetection]] = None
-        self.max_height_active_requirement_frames: int = 10
+        self.tracks_TTL_after_dissapearance_frames: int = 10  # FIXME set actual values
+        self.max_height_active_requirement_frames: int = 10  # FIXME set actual values
+        self.active_gesture_time_track: Optional[
+            TimeTrackedEntity[StaticGesture]
+        ] = None
 
     @property
     def new_track_id(self) -> int:
@@ -91,9 +93,9 @@ class HandDetectionState:
     def _choose_active_track_based_on_detection_height(self, N: int):
         """Active track is the one where hand where the highest last N frames"""
         # choose active track ID
-        pass
+        return 0
 
-    @timing_decorator
+    # @timing_decorator
     def _produce_gesture_detections(
         self, image: np.ndarray, frame: int
     ) -> List[TrackedObject[GestureDetection]]:
@@ -115,7 +117,7 @@ class HandDetectionState:
             )
         return new_tracked_objects
 
-    @timing_decorator
+    # @timing_decorator
     def _remove_stale_tracks(self, current_frame: int) -> None:
         stale_track_indexes = [
             i
@@ -131,7 +133,7 @@ class HandDetectionState:
             if i not in stale_track_indexes
         ]
 
-    @timing_decorator
+    # @timing_decorator
     def _update_tracks_with_tracked_objects(
         self,
         tracked_objects: List[TrackedObject[GestureDetection]],
@@ -162,29 +164,61 @@ class HandDetectionState:
             new_track.extend_track(fp_object)
             self.gesture_detections_tracks.append(new_track)
 
+    def _update_active_gesture_tracking(
+        self, active_track: Track[GestureDetection], time_delta: float
+    ) -> None:
+        active_track_last_gesture = active_track.last.object.gesture
+        if self.active_gesture_time_track is None:
+            self.active_gesture_time_track = TimeTrackedEntity(
+                entity=active_track_last_gesture, tracked_time_seconds=time_delta
+            )
+            return
+        if active_track_last_gesture == self.active_gesture_time_track.entity:
+            self.active_gesture_time_track.accumulate_time(time_delta)
+        else:
+            self.active_gesture_time_track = TimeTrackedEntity(
+                entity=active_track_last_gesture, tracked_time_seconds=time_delta
+            )
+
     def update_tracks_with_linearly_interpolated_boxes(self) -> None:
         # update all tracks with interpolated boxes
         pass
 
-    def update_inner_state(self, image: np.ndarray, frame: int) -> None:
+    def update_inner_state(
+        self,
+        image: np.ndarray,
+        frame_number: int,  # FIXME stop using frame number (mem leak potential)
+        time_delta: float,
+    ) -> None:
         # spawn gesture detections (inference detector, inference classifier)
         gesture_detections: List[
             TrackedObject[GestureDetection]
-        ] = self._produce_gesture_detections(image=image, frame=frame)
+        ] = self._produce_gesture_detections(image=image, frame=frame_number)
         # match with current tracks, spawn new/extend current/remove stale
         self._update_tracks_with_tracked_objects(tracked_objects=gesture_detections)
-        self._remove_stale_tracks(current_frame=frame)
+        self._remove_stale_tracks(current_frame=frame_number)
         # select active track
         self._choose_active_track_based_on_detection_height(
             N=self.max_height_active_requirement_frames
         )
+        active_track: Optional[Track[GestureDetection]] = self.active_track
+        if active_track is not None:
+            self._update_active_gesture_tracking(
+                active_track=active_track, time_delta=time_delta
+            )
+
+    def nullify_gesture_selection(self) -> None:
+        self.active_gesture_time_track = None
 
     @property
-    def active_gesture_detection(self) -> GestureDetection:
+    def active_track(self) -> Optional[Track[GestureDetection]]:
         # return active gesture detection (one with the highest hand position/the longest/allow only one)
         # possibly smooth gesture based on track history/confidence scores (avoid temporarily mulfanctioning of detector/classifier)
-        raise NotImplementedError
+        try:
+            return self.gesture_detections_tracks[0]
+        except IndexError:
+            return None
 
     @property
-    def nonactive_gesture_detections(self) -> List[GestureDetection]:
+    def non_active_tracks(self) -> List[Track[GestureDetection]]:
         return []
