@@ -1,3 +1,4 @@
+from __future__ import annotations
 import arcade
 from MVP.ui_const import SCREEN_WIDTH, SCREEN_HEIGHT
 from arcade.application import Window
@@ -9,10 +10,6 @@ from static_gesture_classification.static_gesture import StaticGesture
 from typing import Optional
 from MVP.data_structures.rect import Rect
 from MVP.draw_utils import draw_progression_as_rectangle_part
-
-
-class MemoryGameManager:
-    pass
 
 
 class MemoryGamePreparationView(arcade.View):
@@ -84,3 +81,6 @@ class MemoryGamePreparationView(arcade.View):
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
         self._update_preparation_confimation()
+
+
+from MVP.memory_game.memory_game_manager import MemoryGameManager
