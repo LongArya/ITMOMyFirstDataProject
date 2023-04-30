@@ -11,6 +11,8 @@ from MVP.rock_paper_scissors_game.game_mechanics import (
 from typing import Dict, Optional
 from MVP.ui_const import SCREEN_HEIGHT, SCREEN_WIDTH
 from MVP.data_structures.gesture_detection import GestureDetection
+from MVP.data_structures.rect import Rect
+from MVP.draw_utils import draw_progression_as_rectangle_part
 
 
 class RPSResultsView(arcade.View):
@@ -34,16 +36,14 @@ class RPSResultsView(arcade.View):
         self.outcome_draw_position_arcade: arcade.NamedPoint = arcade.NamedPoint(
             x=421, y=583.5
         )
-        self.option_progress_bar_draw_positions: Dict[str, arcade.NamedPoint] = {
-            "menu": arcade.NamedPoint(x=1048, y=624),
-            "replay": arcade.NamedPoint(x=1048, y=520),
+        self.option_progress_bars_rectangles: Dict[str, Rect] = {
+            "menu": Rect(top_left_x=1048, top_left_y=624, width=130, height=12),
+            "replay": Rect(top_left_x=1048, top_left_y=520, width=130, height=12),
         }
         self.gesture_option_mapping: Dict[StaticGesture, str] = {
             StaticGesture.OKEY: "replay",
             StaticGesture.FIST: "menu",
         }
-        self.option_progress_bar_max_width = 130
-        self.option_progress_bar_height = 12
         self.option_progress_bar_color: arcade.Color = [255, 145, 103]
         self.current_option_selection: Optional[TimeBasedSelection[str]] = None
 
@@ -111,15 +111,11 @@ class RPSResultsView(arcade.View):
     def _draw_current_option_selection(self) -> None:
         if self.current_option_selection is None:
             return
-        option = self.current_option_selection.selected_object
-        lt_arcade_pos = self.option_progress_bar_draw_positions[option]
-        arcade.draw_lrtb_rectangle_filled(
-            left=lt_arcade_pos.x,
-            top=lt_arcade_pos.y,
-            bottom=lt_arcade_pos.y - self.option_progress_bar_height,
-            right=lt_arcade_pos.x
-            + self.option_progress_bar_max_width
-            * self.current_option_selection.proportion_of_completed_time,
+        option: str = self.current_option_selection.selected_object
+        progress_bar_rectangle = self.option_progress_bars_rectangles[option]
+        draw_progression_as_rectangle_part(
+            rectangle=progress_bar_rectangle,
+            progression_part=self.current_option_selection.proportion_of_completed_time,
             color=self.option_progress_bar_color,
         )
 
