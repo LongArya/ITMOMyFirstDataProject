@@ -186,7 +186,7 @@ class MemoryGameGesturesDemonstrationView(arcade.View):
             ] = self.current_gesture_selection.selected_object
             self.shown_gesture_index -= 1
         if self.shown_gesture_index < 0:
-            print(f"SHOWN GESTURES = {self.shown_gestures}")
+            self.game_manager.go_to_results(user_gestures=self.shown_gestures)
 
 
 from MVP.memory_game.memory_game_manager import (

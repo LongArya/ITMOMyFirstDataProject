@@ -14,6 +14,7 @@ from MVP.draw_utils import draw_progression_as_rectangle_part
 
 class MemoryGamePreparationView(arcade.View):
     def __init__(self, game_core: GameCoreProtocol, game_manager: MemoryGameManager):
+        self.game_manager = game_manager
         self.game_core = game_core
         self.preparation_confirmation_selection: Optional[
             TimeBasedSelection[StaticGesture]
@@ -27,6 +28,7 @@ class MemoryGamePreparationView(arcade.View):
         super().__init__()
 
     def setup(self) -> None:
+        self.preparation_confirmation_selection = None
         self.game_core.recreate_scene()
         self.game_core.hand_detection_state.nullify_gesture_selection()
         self.game_core.scene.add_sprite_list(self.main_sprite_list_name)
@@ -81,6 +83,10 @@ class MemoryGamePreparationView(arcade.View):
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
         self._update_preparation_confimation()
+        if self.preparation_confirmation_selection is None:
+            return
+        if self.preparation_confirmation_selection.is_active:
+            self.game_manager.start_memorization_stage()
 
 
 from MVP.memory_game.memory_game_manager import MemoryGameManager

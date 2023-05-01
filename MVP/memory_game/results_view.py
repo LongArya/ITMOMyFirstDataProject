@@ -7,10 +7,11 @@ from MVP.data_structures.time_based_selection import TimeBasedSelection
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
 from MVP.data_structures.gesture_detection import GestureDetection
 from static_gesture_classification.static_gesture import StaticGesture
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Generic, TypeVar
 from MVP.data_structures.rect import Rect
 from MVP.memory_game.memory_game_result_kind import MemoryGameResultKind
 from MVP.draw_utils import draw_progression_as_rectangle_part, draw_rectangle
+from MVP.time_based_gesture_options_tracker import TimeBasedGesturesOptionsTracker
 
 
 class MemoryGameResultsView(arcade.View):
@@ -43,12 +44,35 @@ class MemoryGameResultsView(arcade.View):
         self.title_position_arcade: arcade.NamedPoint = arcade.NamedPoint(
             x=431.5, y=634
         )
+        self._menu_options_confirmation_time_seconds: float = 2
+        self.option_progress_bars_rectangles: Dict[str, Rect] = {
+            "menu": Rect(top_left_x=1048, top_left_y=624, width=130, height=12),
+            "replay": Rect(top_left_x=1048, top_left_y=520, width=130, height=12),
+        }
+        self._menu_options_tracker: TimeBasedGesturesOptionsTracker[
+            str
+        ] = TimeBasedGesturesOptionsTracker(
+            gesture_to_option_mapping={
+                StaticGesture.OKEY: "replay",
+                StaticGesture.FIST: "menu",
+            },
+            required_time_seconds=self._menu_options_confirmation_time_seconds,
+        )
+        self.progress_bar_color: arcade.Color = [255, 145, 103]
 
     def _draw_current_option_progress_bar(self) -> None:
-        pass
-
-    def _update_option_progress_bar(self) -> None:
-        pass
+        active_option_selection: Optional[
+            TimeBasedSelection[str]
+        ] = self._menu_options_tracker.current_selection
+        if active_option_selection is None:
+            return
+        draw_progression_as_rectangle_part(
+            rectangle=self.option_progress_bars_rectangles[
+                active_option_selection.selected_object
+            ],
+            progression_part=active_option_selection.proportion_of_completed_time,
+            color=self.progress_bar_color,
+        )
 
     def setup(
         self,
@@ -57,6 +81,7 @@ class MemoryGameResultsView(arcade.View):
         correct_answers_number: int,
         result_kind: MemoryGameResultKind,
     ) -> None:
+        self._menu_options_tracker.reset()
         self.game_core.recreate_scene()
         self.game_core.hand_detection_state.nullify_gesture_selection()
         # add all sprites
@@ -131,7 +156,14 @@ class MemoryGameResultsView(arcade.View):
 
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
-        self._update_option_progress_bar()
+        self._menu_options_tracker.update_inner_state(
+            active_gesture_selection=self.game_core.hand_detection_state.active_gesture_time_track
+        )
+        selected_menu_option: Optional[str] = self._menu_options_tracker.active_option
+        if selected_menu_option == "menu":
+            self.game_manager.return_to_menu()
+        if selected_menu_option == "replay":
+            self.game_manager.replay()
 
 
 from MVP.memory_game.memory_game_manager import (

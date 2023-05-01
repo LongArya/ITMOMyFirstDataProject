@@ -18,12 +18,11 @@ class MemoryGameMemorizationStage(arcade.View):
         self,
         game_core: GameCoreProtocol,
         game_manager: MemoryGameManager,
-        memorization_gestures: List[StaticGesture],
     ):
         super().__init__()
         self.game_core = game_core
-        self.menu_manager = game_manager
-        self.memorization_gestures: List[StaticGesture] = memorization_gestures
+        self.game_manager = game_manager
+        self.memorization_gestures: List[StaticGesture] = None
         self.main_sprite_list_name: str = "MemoryGameMemorizationStage"
         self.memorization_cards_centers_arcade: List[arcade.NamedPoint] = [
             arcade.NamedPoint(x=179.5, y=377),
@@ -36,7 +35,7 @@ class MemoryGameMemorizationStage(arcade.View):
             top_left_x=191, top_left_y=185, width=547, height=53
         )
         self.time_progress_bar_color: arcade.Color = [255, 145, 103]
-        self.memorization_time_limit_seconds = 20
+        self.memorization_time_limit_seconds = 8
         self.spent_time_seconds: float = 0
 
     def setup(self, memorization_gestures: List[StaticGesture]) -> None:
@@ -57,21 +56,18 @@ class MemoryGameMemorizationStage(arcade.View):
         )
         gesture: StaticGesture
         draw_position: arcade.NamedPoint
+        gesture_sprite: arcade.Sprite
         for gesture, draw_position in zip(
             self.memorization_gestures, self.memorization_cards_centers_arcade
         ):
-            self.game_core.sprites_collection.not_active_gestures_cards_paths[
-                gesture
-            ].center_x = draw_position.x
-            self.game_core.sprites_collection.not_active_gestures_cards_paths[
-                gesture
-            ].center_y = draw_position.y
-            self.game_core.scene.add_sprite(
-                self.main_sprite_list_name,
+            gesture_sprite = arcade.Sprite(
                 self.game_core.sprites_collection.not_active_gestures_cards_paths[
                     gesture
-                ],
+                ]
             )
+            gesture_sprite.center_x = draw_position.x
+            gesture_sprite.center_y = draw_position.y
+            self.game_core.scene.add_sprite(self.main_sprite_list_name, gesture_sprite)
 
     def draw_left_time_progress_bar(self) -> None:
         spent_time_proportion: float = (
@@ -100,6 +96,8 @@ class MemoryGameMemorizationStage(arcade.View):
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
         self.spent_time_seconds += delta_time
+        if self.spent_time_seconds >= self.memorization_time_limit_seconds:
+            self.game_manager.start_gestures_demonstration_stage()
 
 
 from MVP.memory_game.memory_game_manager import MemoryGameManager
