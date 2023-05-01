@@ -22,7 +22,13 @@ class MenuManagerView(arcade.View):
         self.games: Dict[GameKind, arcade.View] = {
             GameKind.ROCK_PAPER_SCISSORS: RockPaperScissorsGameManager(
                 game_core=self.game_core, menu_view=self
-            )
+            ),
+            GameKind.MEMORY_GAME: MemoryGameManager(
+                game_core=self.game_core, menu_view=self
+            ),
+            GameKind.MATH_TRIVIA_GAME: MathTriviaGameManager(
+                game_core=self.game_core, menu_view=self
+            ),
         }
         self.cards_sprite_list: str = "cards_sprite_list"
         self.cursor_sprite_list: str = "cursor_sprite_list"
@@ -115,7 +121,6 @@ class MenuManagerView(arcade.View):
             )
 
     def update_game_cards_on_scene(self) -> None:
-        # TODO add rule card if game is selected
         # remove all active and inactive game cards
         for game_kind in GameKind:
             self.game_core.sprites_collection.not_selected_menu_cards[
@@ -230,8 +235,9 @@ class MenuManagerView(arcade.View):
             and self.is_cursor_closed_on_prev_frame
             and self.selected_game is not None
         ):
-            print(f"STARTING GAME = {self.selected_game}")
             self.start_game(self.selected_game)
 
 
 from MVP.rock_paper_scissors_game.game_manager import RockPaperScissorsGameManager
+from MVP.memory_game.memory_game_manager import MemoryGameManager
+from MVP.math_trivia_game.math_trivia_game_manager import MathTriviaGameManager
