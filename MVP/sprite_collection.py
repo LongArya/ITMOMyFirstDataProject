@@ -93,6 +93,16 @@ class SpriteCollection:
         self.active_gestures_cards_paths: Dict[
             StaticGesture, str
         ] = self.get_gestures_cards_paths(state="active")
+        self.math_trivia_background: arcade.Sprite = arcade.Sprite(
+            os.path.join(
+                self.sprites_root, "MathTriviaGame", "TriviaGameLevelBackground.png"
+            )
+        )
+        self.math_trivia_results_background: arcade.Sprite = arcade.Sprite(
+            os.path.join(
+                self.sprites_root, "MathTriviaGame", "TriviaGameResultBackground.png"
+            )
+        )
 
     def get_gestures_cards_paths(self, state: str) -> Dict[StaticGesture, str]:
         gestures_cards_root = os.path.join(self.sprites_root, "MemoryGame", state)
