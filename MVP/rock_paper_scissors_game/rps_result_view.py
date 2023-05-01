@@ -13,6 +13,7 @@ from MVP.ui_const import SCREEN_HEIGHT, SCREEN_WIDTH
 from MVP.data_structures.gesture_detection import GestureDetection
 from MVP.data_structures.rect import Rect
 from MVP.draw_utils import draw_progression_as_rectangle_part
+from MVP.time_based_gesture_options_tracker import TimeBasedGesturesOptionsTracker
 
 
 class RPSResultsView(arcade.View):
@@ -40,12 +41,16 @@ class RPSResultsView(arcade.View):
             "menu": Rect(top_left_x=1048, top_left_y=624, width=130, height=12),
             "replay": Rect(top_left_x=1048, top_left_y=520, width=130, height=12),
         }
-        self.gesture_option_mapping: Dict[StaticGesture, str] = {
-            StaticGesture.OKEY: "replay",
-            StaticGesture.FIST: "menu",
-        }
+        self._menu_options_tracker: TimeBasedGesturesOptionsTracker[
+            str
+        ] = TimeBasedGesturesOptionsTracker(
+            gesture_to_option_mapping={
+                StaticGesture.OKEY: "replay",
+                StaticGesture.FIST: "menu",
+            },
+            required_time_seconds=self.option_selection_time_requirement_seconds,
+        )
         self.option_progress_bar_color: arcade.Color = [255, 145, 103]
-        self.current_option_selection: Optional[TimeBasedSelection[str]] = None
 
     def setup(
         self,
@@ -53,7 +58,7 @@ class RPSResultsView(arcade.View):
         enemy_option: RPSGameOption,
         outcome: EndGameResult,
     ):
-        self.current_option_selection = None
+        self._menu_options_tracker.reset()
         self.hero_option = hero_option
         self.enemy_option = enemy_option
         self.outcome = outcome
@@ -109,33 +114,17 @@ class RPSResultsView(arcade.View):
         self.game_core.setup_web_camera_preview_in_scene()
 
     def _draw_current_option_selection(self) -> None:
-        if self.current_option_selection is None:
+        active_option_selection: Optional[
+            TimeBasedSelection[str]
+        ] = self._menu_options_tracker.current_selection
+        if active_option_selection is None:
             return
-        option: str = self.current_option_selection.selected_object
-        progress_bar_rectangle = self.option_progress_bars_rectangles[option]
         draw_progression_as_rectangle_part(
-            rectangle=progress_bar_rectangle,
-            progression_part=self.current_option_selection.proportion_of_completed_time,
+            rectangle=self.option_progress_bars_rectangles[
+                active_option_selection.selected_object
+            ],
+            progression_part=active_option_selection.proportion_of_completed_time,
             color=self.option_progress_bar_color,
-        )
-
-    def _update_selected_menu_option(self) -> None:
-        active_geture_selection: Optional[
-            TimeTrackedEntity[StaticGesture]
-        ] = self.game_core.hand_detection_state.active_gesture_time_track
-        if active_geture_selection is None:
-            self.current_option_selection = None
-            return
-        menu_option = self.gesture_option_mapping.get(
-            active_geture_selection.entity, None
-        )
-        if menu_option is None:
-            self.current_option_selection = None
-            return
-        self.current_option_selection = TimeBasedSelection(
-            selected_object=menu_option,
-            accumulated_time_seconds=active_geture_selection.tracked_time_seconds,
-            time_requirement_seconds=self.option_selection_time_requirement_seconds,
         )
 
     def on_draw(self) -> None:
@@ -152,14 +141,14 @@ class RPSResultsView(arcade.View):
 
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
-        self._update_selected_menu_option()
-        if self.current_option_selection is None:
-            return
-        if self.current_option_selection.is_active:
-            if self.current_option_selection.selected_object == "replay":
-                self.game_manager.replay()
-            if self.current_option_selection.selected_object == "menu":
-                self.game_manager.return_to_menu()
+        self._menu_options_tracker.update_inner_state(
+            active_gesture_selection=self.game_core.hand_detection_state.active_gesture_time_track
+        )
+        selected_menu_option: Optional[str] = self._menu_options_tracker.active_option
+        if selected_menu_option == "menu":
+            self.game_manager.return_to_menu()
+        if selected_menu_option == "replay":
+            self.game_manager.replay()
 
 
 from MVP.rock_paper_scissors_game.game_manager import RockPaperScissorsGameManager

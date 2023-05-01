@@ -13,6 +13,7 @@ from MVP.ui_const import SCREEN_HEIGHT, SCREEN_WIDTH
 from MVP.data_structures.gesture_detection import GestureDetection
 from MVP.data_structures.rect import Rect
 from MVP.draw_utils import draw_progression_as_rectangle_part
+from MVP.time_based_gesture_options_tracker import TimeBasedGesturesOptionsTracker
 
 
 class RPSGestureSelectionView(arcade.View):
@@ -24,12 +25,16 @@ class RPSGestureSelectionView(arcade.View):
         self.game_manager = game_manager
         self.main_sprite_list_name: str = "RPSGestureSelection"
         self.rps_option_selection_time_requirement_seconds: float = 5
-        self.gesture_rps_option_mapping: Dict[StaticGesture, RPSGameOption] = {
-            StaticGesture.TWO: RPSGameOption.SCISSORS,
-            StaticGesture.FIVE: RPSGameOption.PAPER,
-            StaticGesture.FIST: RPSGameOption.ROCK,
-        }
-        self.rps_option_selection: Optional[TimeBasedSelection[RPSGameOption]] = None
+        self.rps_option_tracker: TimeBasedGesturesOptionsTracker[
+            RPSGameOption
+        ] = TimeBasedGesturesOptionsTracker(
+            gesture_to_option_mapping={
+                StaticGesture.TWO: RPSGameOption.SCISSORS,
+                StaticGesture.FIVE: RPSGameOption.PAPER,
+                StaticGesture.FIST: RPSGameOption.ROCK,
+            },
+            required_time_seconds=self.rps_option_selection_time_requirement_seconds,
+        )
         self.rps_draw_positions_arcade: Dict[RPSGameOption, arcade.NamedPoint] = {
             RPSGameOption.PAPER: arcade.NamedPoint(x=163, y=340),
             RPSGameOption.SCISSORS: arcade.NamedPoint(x=420, y=340),
@@ -39,8 +44,6 @@ class RPSGestureSelectionView(arcade.View):
             top_left_x=72, top_left_y=631, width=699, height=37
         )
         self.progress_bar_color: arcade.Color = [255, 145, 103]
-
-    # FIXME move scene setup to separate method
 
     def _add_not_selected_rps_options_to_scene(self) -> None:
         for rps_option in RPSGameOption:
@@ -52,6 +55,7 @@ class RPSGestureSelectionView(arcade.View):
             self.game_core.scene.add_sprite(self.main_sprite_list_name, target_sprite)
 
     def setup(self) -> None:
+        self.rps_option_tracker.reset()
         self.game_core.recreate_scene()
         self.game_core.hand_detection_state.nullify_gesture_selection()
         self.game_core.sprites_collection.RPS_geture_selection_background.center_x = (
@@ -69,25 +73,6 @@ class RPSGestureSelectionView(arcade.View):
         # web camera
         self.game_core.setup_web_camera_preview_in_scene()
 
-    def _update_selected_rps_option(self) -> None:
-        active_geture_selection: Optional[
-            TimeTrackedEntity[StaticGesture]
-        ] = self.game_core.hand_detection_state.active_gesture_time_track
-        if active_geture_selection is None:
-            self.rps_option_selection = None
-            return
-        rps_option = self.gesture_rps_option_mapping.get(
-            active_geture_selection.entity, None
-        )
-        if rps_option is None:
-            self.rps_option_selection = None
-            return
-        self.rps_option_selection = TimeBasedSelection(
-            selected_object=rps_option,
-            accumulated_time_seconds=active_geture_selection.tracked_time_seconds,
-            time_requirement_seconds=self.rps_option_selection_time_requirement_seconds,
-        )
-
     def _update_scene_based_on_selected_rps_option(self) -> None:
         # remove all rps options sprites
         sprite: arcade.Sprite
@@ -98,7 +83,7 @@ class RPSGestureSelectionView(arcade.View):
         ) in self.game_core.sprites_collection.RPS_not_selected_options.values():
             sprite.remove_from_sprite_lists()
 
-        if self.rps_option_selection is None:
+        if self.rps_option_tracker.current_selection is None:
             self._add_not_selected_rps_options_to_scene()
             return
 
@@ -107,7 +92,8 @@ class RPSGestureSelectionView(arcade.View):
         for rps_option in RPSGameOption:
             target_sprite: arcade.Sprite = (
                 (self.game_core.sprites_collection.RPS_selected_options[rps_option])
-                if rps_option == self.rps_option_selection.selected_object
+                if rps_option
+                == self.rps_option_tracker.current_selection.selected_object
                 else self.game_core.sprites_collection.RPS_not_selected_options[
                     rps_option
                 ]
@@ -117,11 +103,11 @@ class RPSGestureSelectionView(arcade.View):
             self.game_core.scene.add_sprite(self.main_sprite_list_name, target_sprite)
 
     def _draw_current_rps_selection_progress(self) -> None:
-        if self.rps_option_selection is None:
+        if self.rps_option_tracker.current_selection is None:
             return
         draw_progression_as_rectangle_part(
             rectangle=self.progress_bar_rect_arcade,
-            progression_part=self.rps_option_selection.proportion_of_completed_time,
+            progression_part=self.rps_option_tracker.current_selection.proportion_of_completed_time,
             color=self.progress_bar_color,
         )
 
@@ -139,14 +125,16 @@ class RPSGestureSelectionView(arcade.View):
 
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)
-        self._update_selected_rps_option()
+        self.rps_option_tracker.update_inner_state(
+            active_gesture_selection=self.game_core.hand_detection_state.active_gesture_time_track
+        )
         self._update_scene_based_on_selected_rps_option()
-        if self.rps_option_selection is None:
+        selected_rps_object: Optional[
+            RPSGameOption
+        ] = self.rps_option_tracker.active_option
+        if selected_rps_object is None:
             return
-        if self.rps_option_selection.is_active:
-            self.game_manager.switch_to_results(
-                hero_option=self.rps_option_selection.selected_object
-            )
+        self.game_manager.switch_to_results(hero_option=selected_rps_object)
 
 
 from MVP.rock_paper_scissors_game.game_manager import RockPaperScissorsGameManager
