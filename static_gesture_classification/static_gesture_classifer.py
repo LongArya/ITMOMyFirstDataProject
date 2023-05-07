@@ -12,7 +12,7 @@ from static_gesture_classification.config import StaticGestureConfig
 from general.data_structures.model_line import ModelLine
 import pandas as pd
 from PIL import Image
-from typing import Dict, List, Iterable, Tuple, Callable
+from typing import Dict, List, Iterable, Tuple, Callable, Optional
 from collections import defaultdict
 from general.data_structures.data_split import DataSplit
 from static_gesture_classification.static_gesture import StaticGesture
@@ -25,7 +25,8 @@ from static_gesture_classification.metrics_utils import (
 from static_gesture_classification.metrics_utils import (
     generate_confusion_matrix_plot_from_classification_results,
 )
-from static_gesture_classification.config import AugsConfig
+from static_gesture_classification.config import AugsConfig, TrainHyperparameters
+from static_gesture_classification.focall_loss import FocalLoss
 import torchvision.transforms as tf
 
 
@@ -38,7 +39,7 @@ def init_static_gesture_classifier(cfg: StaticGestureConfig) -> nn.Module:
         raise NotImplementedError(f"Unknown architecture: {cfg.model.architecture}")
 
 
-def init_lr_scheduler(optimizer, cfg: StaticGestureConfig):
+def init_lr_scheduler(optimizer, cfg: StaticGestureConfig) -> Optional[nn.Module]:
     if cfg.train_hyperparams.scheduler_type == "plateau":
         scheduler = lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -102,6 +103,17 @@ def init_augmentations_from_config(
     return {DataSplit.TRAIN: train_aug, DataSplit.VAL: val_aug}
 
 
+def init_loss_from_config(train_config: TrainHyperparameters) -> Optional[nn.Module]:
+    if train_config.loss == "cross-entropy":
+        return nn.CrossEntropyLoss()
+    elif train_config.loss == "focal":
+        return FocalLoss(
+            class_num=len(StaticGesture), gamma=train_config.focal_loss_gamma
+        )
+    else:
+        raise NotImplementedError(f"Loss {train_config.loss} is not implemented")
+
+
 class StaticGestureClassifier(pl.LightningModule):
     def __init__(
         self,
@@ -110,8 +122,7 @@ class StaticGestureClassifier(pl.LightningModule):
     ):
         super().__init__()
         self.cfg = cfg
-        # FIXME use focal loss? / specify loss in cfg
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = init_loss_from_config(cfg.train_hyperparams)
         self.model = init_static_gesture_classifier(self.cfg)
         self.predictions_on_datasets: Dict[
             DataSplit, ClassificationResultsDataframe
