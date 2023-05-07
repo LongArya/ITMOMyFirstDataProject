@@ -1,6 +1,4 @@
-import torch
 from typing import Tuple
-import matplotlib.pyplot as plt
 import onnxruntime
 import numpy as np
 import cv2

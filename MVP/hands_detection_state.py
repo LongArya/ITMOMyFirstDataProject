@@ -1,8 +1,5 @@
 from MVP.yolo_detection import YoloInferece
 import numpy as np
-from static_gesture_classification.static_gesture_classifer import (
-    StaticGestureClassifier,
-)
 from typing import TypeVar, Generic, List, Optional, Callable, Tuple, Iterable
 from dataclasses import dataclass
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
@@ -16,8 +13,6 @@ from MVP.tracking_utils import (
 from MVP.data_structures.match import Match
 from general.utils import get_xyxy_boxes_iou, timing_decorator
 from copy import deepcopy
-from PIL import Image
-import torch
 from static_gesture_classification.static_gesture import StaticGesture
 from MVP.onnx_static_gesture_classifier import ONNXResnet18StaticGestureClassifier
 
