@@ -56,6 +56,7 @@ class GameCorePlaceHolder:
         rgb_frame = np.fliplr(rgb_frame)
         if self.display_camera:
             cv2.imshow(self.window_name, np.fliplr(bgr_frame))
+            cv2.waitKey(1)
         self.hand_detection_state.update_inner_state(
             image=rgb_frame, time_delta=time_delta, frame_number=self.frame_number
         )
@@ -116,7 +117,7 @@ class GameCorePlaceHolder:
             current_origin=arcade.NamedPoint(
                 x=SCREEN_WIDTH - self.sprites_collection.web_camera_preview.width,
                 y=SCREEN_HEIGHT - self.sprites_collection.web_camera_preview.height,
-            ),  # FIXME temporary
+            ),  
             new_origin=arcade.NamedPoint(0, 0),
         )
         box_center = from_opencv_coordinate_system_to_arcade(
