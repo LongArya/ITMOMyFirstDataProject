@@ -27,6 +27,8 @@ class TrainHyperparameters:
     # optimizer_type: str  # TODO add later
     patience_epochs_num: int
     lr_reduction_factor: float
+    loss: str
+    focal_loss_gamma: float
 
 
 @dataclass
