@@ -1,4 +1,4 @@
-from yolo_detection import YoloInferece
+from MVP.yolo_detection import YoloInferece
 import numpy as np
 from static_gesture_classification.static_gesture_classifer import (
     StaticGestureClassifier,
@@ -19,6 +19,7 @@ from copy import deepcopy
 from PIL import Image
 import torch
 from static_gesture_classification.static_gesture import StaticGesture
+from MVP.onnx_static_gesture_classifier import ONNXResnet18StaticGestureClassifier
 
 T = TypeVar("T")
 
@@ -42,29 +43,27 @@ def get_minimum_square_box_containing_box(xyxy_box: Iterable[float]) -> List[int
 
 def get_prediction_from_hand_detection(
     rgb_frame: np.ndarray,
-    model: StaticGestureClassifier,
+    model: ONNXResnet18StaticGestureClassifier,
     detected_box: np.ndarray,
-    val_pipeline: Callable[[Image.Image], torch.Tensor],
 ) -> Tuple[StaticGesture, float]:
-    image: Image.Image = Image.fromarray(rgb_frame, mode="RGB")
     squared_box = get_minimum_square_box_containing_box(detected_box)
-    crop = image.crop(squared_box)
-    input: torch.Tensor = val_pipeline(crop)
-    return model.get_gesture_prediction_for_single_input(input)
+    x1, y1, x2, y2 = squared_box
+    crop = rgb_frame[y1:y2, x1:x2, :]
+    return model(crop)
 
 
 class HandDetectionState:
     def __init__(
         self,
         hand_detector: YoloInferece,
-        gesture_classifier: StaticGestureClassifier,
-        gesture_classifier_preprocessing: Callable[[Image.Image], torch.Tensor],
+        gesture_classifier: ONNXResnet18StaticGestureClassifier,
         tracks_buffer_size: Optional[int],
-    ):
-        self.gesture_classifier_preprocessing = gesture_classifier_preprocessing
+    ) -> None:
         self.gesture_detections_tracks: List[Track[GestureDetection]] = []
         self.hand_detector: YoloInferece = hand_detector
-        self.gesture_classifier: StaticGestureClassifier = gesture_classifier
+        self.gesture_classifier: ONNXResnet18StaticGestureClassifier = (
+            gesture_classifier
+        )
         self.tracks_buffer_size: Optional[int] = tracks_buffer_size
         self.tracks_matcher: Callable[
             [TrackedObject[GestureDetection], Track[GestureDetection]],
@@ -106,7 +105,6 @@ class HandDetectionState:
             gesture, prob = get_prediction_from_hand_detection(
                 rgb_frame=image,
                 model=self.gesture_classifier,
-                val_pipeline=self.gesture_classifier_preprocessing,
                 detected_box=box,
             )
             gesture_detection: GestureDetection = GestureDetection(
