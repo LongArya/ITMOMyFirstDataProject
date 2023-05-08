@@ -1,6 +1,6 @@
 from __future__ import annotations
 import arcade
-from MVP.game_core_protocol import GameCoreProtocol
+from MVP.game_core import GameCore
 from MVP.data_structures.time_based_selection import TimeBasedSelection
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
 from static_gesture_classification.static_gesture import StaticGesture
@@ -18,11 +18,11 @@ from MVP.time_based_gesture_options_tracker import TimeBasedGesturesOptionsTrack
 
 class RPSResultsView(arcade.View):
     def __init__(
-        self, game_core: GameCoreProtocol, game_manager: RockPaperScissorsGameManager
+        self, game_core: GameCore, game_manager: RockPaperScissorsGameManager
     ) -> None:
         super().__init__()
-        self.game_core = game_core
-        self.game_manager = game_manager
+        self.game_core: GameCore = game_core
+        self.game_manager: RockPaperScissorsGameManager = game_manager
         self.hero_option: Optional[RPSGameOption] = None
         self.enemy_option: Optional[RPSGameOption] = None
         self.outcome: Optional[EndGameResult] = None
@@ -131,13 +131,7 @@ class RPSResultsView(arcade.View):
         self.clear()
         self.game_core.scene.draw()
         self._draw_current_option_selection()
-        if self.game_core.hand_detection_state.active_track is not None:
-            gesture_detection: GestureDetection = (
-                self.game_core.hand_detection_state.active_track.last.object
-            )
-            self.game_core.draw_gesture_detection_in_web_camera(
-                gesture_detection=gesture_detection, active=True
-            )
+        self.game_core.draw_hands_detections_on_web_camera()
 
     def on_update(self, delta_time: float):
         self.game_core.update_inner_state(delta_time)

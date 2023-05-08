@@ -2,7 +2,7 @@ from __future__ import annotations
 import arcade
 from MVP.ui_const import SCREEN_WIDTH, SCREEN_HEIGHT
 from arcade.application import Window
-from MVP.game_core_protocol import GameCoreProtocol
+from MVP.game_core import GameCore
 from MVP.data_structures.time_based_selection import TimeBasedSelection
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
 from MVP.data_structures.gesture_detection import GestureDetection
@@ -34,10 +34,10 @@ def generate_random_trivia_question() -> TriviaQuestion:
 
 
 class MathTriviaGameManager(arcade.View):
-    def __init__(self, game_core: GameCoreProtocol, menu_view: MenuManagerView):
+    def __init__(self, game_core: GameCore, menu_view: MenuManagerView):
         super().__init__()
-        self.game_core = game_core
-        self.menu_view = menu_view
+        self.game_core: GameCore = game_core
+        self.menu_view: MenuManagerView = menu_view
         self.completed_levels_num: int
         self.correct_answers_num: int
         self.current_question: TriviaQuestion

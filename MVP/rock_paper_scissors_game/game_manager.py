@@ -5,14 +5,14 @@ from MVP.rock_paper_scissors_game.game_mechanics import (
     EndGameResult,
     rock_paper_scissors_rule,
 )
-from MVP.game_core_protocol import GameCoreProtocol
+from MVP.game_core import GameCore
 import random
 
 
 class RockPaperScissorsGameManager(arcade.View):
     def __init__(
         self,
-        game_core: GameCoreProtocol,
+        game_core: GameCore,
         menu_view: MenuManagerView,
     ) -> None:
         super().__init__()

@@ -2,7 +2,7 @@ from __future__ import annotations
 import arcade
 from MVP.ui_const import SCREEN_WIDTH, SCREEN_HEIGHT
 from arcade.application import Window
-from MVP.game_core_protocol import GameCoreProtocol
+from MVP.game_core import GameCore
 from MVP.data_structures.time_based_selection import TimeBasedSelection
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
 from MVP.data_structures.gesture_detection import GestureDetection
@@ -15,12 +15,12 @@ from MVP.draw_utils import draw_progression_as_rectangle_part, draw_rectangle
 class MemoryGameGesturesDemonstrationView(arcade.View):
     def __init__(
         self,
-        game_core: GameCoreProtocol,
+        game_core: GameCore,
         game_manager: MemoryGameManager,
     ) -> None:
         super().__init__()
-        self.game_core = game_core
-        self.game_manager = game_manager
+        self.game_core: GameCore = game_core
+        self.game_manager: MemoryGameManager = game_manager
         self.shown_gesture_index = MEMORIZATION_GAME_GESTURES_NUM - 1
         self.current_gesture_selection: Optional[
             TimeBasedSelection[StaticGesture]
@@ -165,13 +165,7 @@ class MemoryGameGesturesDemonstrationView(arcade.View):
         self.game_core.scene.draw()
         self._draw_progress_bars_backgrounds()
         self._draw_current_gesture_progress_bar()
-        if self.game_core.hand_detection_state.active_track is not None:
-            gesture_detection: GestureDetection = (
-                self.game_core.hand_detection_state.active_track.last.object
-            )
-            self.game_core.draw_gesture_detection_in_web_camera(
-                gesture_detection=gesture_detection, active=True
-            )
+        self.game_core.draw_hands_detections_on_web_camera()
 
     def on_update(self, delta_time: float) -> None:
         self.game_core.update_inner_state(delta_time)

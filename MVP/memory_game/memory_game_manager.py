@@ -1,7 +1,7 @@
 from __future__ import annotations
 import arcade
 import random
-from MVP.game_core_protocol import GameCoreProtocol
+from MVP.game_core import GameCore
 from MVP.memory_game.memory_game_result_kind import MemoryGameResultKind
 from static_gesture_classification.static_gesture import StaticGesture
 from typing import List, Dict
@@ -19,11 +19,11 @@ RESULT_TO_SCORE_MAPPING: Dict[int, MemoryGameResultKind] = {
 
 
 class MemoryGameManager(arcade.View):
-    def __init__(self, game_core: GameCoreProtocol, menu_view: MenuManagerView):
+    def __init__(self, game_core: GameCore, menu_view: MenuManagerView):
         super().__init__()
         self.memorization_gestures: List[StaticGesture]
-        self.game_core = game_core
-        self.menu_view = menu_view
+        self.game_core: GameCore = game_core
+        self.menu_view: MenuManagerView = menu_view
         self.preparation_stage_view = MemoryGamePreparationView(
             game_core=self.game_core, game_manager=self
         )

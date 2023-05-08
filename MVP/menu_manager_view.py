@@ -1,6 +1,5 @@
 import arcade
 from MVP.ui_const import SCREEN_HEIGHT, SCREEN_WIDTH
-from MVP.game_core_protocol import GameCoreProtocol
 from typing import Dict, Optional
 from MVP.data_structures.game_kind import GameKind
 from MVP.geometry_utils import (
@@ -12,11 +11,12 @@ from MVP.geometry_utils import (
 from MVP.data_structures.track import Track
 from MVP.data_structures.time_tracked_entity import TimeTrackedEntity
 from MVP.data_structures.gesture_detection import GestureDetection
+from MVP.game_core import GameCore
 from static_gesture_classification.static_gesture import StaticGesture
 
 
 class MenuManagerView(arcade.View):
-    def __init__(self, game_core: GameCoreProtocol) -> None:
+    def __init__(self, game_core: GameCore) -> None:
         super().__init__()
         self.game_core = game_core
         self.games: Dict[GameKind, arcade.View] = {
@@ -112,13 +112,7 @@ class MenuManagerView(arcade.View):
     def on_draw(self) -> None:
         self.clear()
         self.game_core.scene.draw()
-        if self.game_core.hand_detection_state.active_track is not None:
-            gesture_detection: GestureDetection = (
-                self.game_core.hand_detection_state.active_track.last.object
-            )
-            self.game_core.draw_gesture_detection_in_web_camera(
-                gesture_detection=gesture_detection, active=True
-            )
+        self.game_core.draw_hands_detections_on_web_camera()
 
     def update_game_cards_on_scene(self) -> None:
         # remove all active and inactive game cards
