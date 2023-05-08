@@ -17,7 +17,17 @@ HAGRID_IMAGES_ROOT = os.path.join(HAGRID_DATA_ROOT, "subsample")
 HAGRID_META_ROOT = os.path.join(HAGRID_DATA_ROOT, "ann_subsample")
 
 YOLO_V7_INPUT_RESOLUTION = (320, 320)
-YOLO_V7_HAND_DETECTION = os.path.join(SCRIPT_DIR, "YoloV7_Tiny.onnx")
+YOLO_V7_ONNX_HAND_DETECTION = os.path.join(
+    SCRIPT_DIR, "MVP", "onnx_networks", "weights", "YoloV7_Tiny.onnx"
+)
+RESNET18_ONNX_CLASSIFIER = os.path.join(
+    SCRIPT_DIR,
+    "MVP",
+    "onnx_networks",
+    "weights",
+    "checkpoint_epoch=49-val_weighted_F1=0.88.ckpt.onnx",
+)
+
 
 TRAIN_RESULTS_ROOT = os.path.join(WORKSPACE_DIR, "training_results")
 STATIC_GESTURE_RESULTS_ROOT = os.path.join(
