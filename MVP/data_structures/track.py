@@ -8,21 +8,23 @@ T = TypeVar("T")
 
 @dataclass
 class TrackedObject(Generic[T]):
-    frame: int
+    """Representation of object at time point"""
+
+    time_stamp: int
     object: T
 
 
 class Track(Generic[T]):
-    """Class for keeping series of some objects"""
+    """Class for keeping time series of some objects"""
 
     def __init__(self, buffer_size: Optional[int], track_id: int):
         self.track_id = track_id
         self.tracked_series: Deque[TrackedObject[T]] = deque(maxlen=buffer_size)
-        self._tracked_history: int = 0
+        self._tracks_updates_number: int = 0
 
     def extend_track(self, tracked_frame: TrackedObject[T]) -> None:
         self.tracked_series.append(tracked_frame)
-        self._tracked_history += 1
+        self._tracks_updates_number += 1
 
     @property
     def last(self) -> TrackedObject[T]:
@@ -30,11 +32,11 @@ class Track(Generic[T]):
 
     @property
     def last_updated_frame(self) -> int:
-        return self.tracked_series[-1].frame
+        return self.tracked_series[-1].time_stamp
 
     @property
-    def tracked_history(self):
-        return self._tracked_history
+    def tracks_updates_number(self):
+        return self._tracks_updates_number
 
     def is_stale(self, current_frame: int, expiration_frame_num: int) -> bool:
         is_stale = current_frame - self.last_updated_frame > expiration_frame_num
