@@ -1,4 +1,4 @@
-from MVP.yolo_detection import YoloInferece
+from MVP.onnx_networks.models.yolo_detection import YoloInferece
 import numpy as np
 from typing import TypeVar, Generic, List, Optional, Callable, Tuple, Iterable
 from dataclasses import dataclass
@@ -14,7 +14,9 @@ from MVP.data_structures.match import Match
 from general.utils import get_xyxy_boxes_iou, timing_decorator
 from copy import deepcopy
 from static_gesture_classification.static_gesture import StaticGesture
-from MVP.onnx_static_gesture_classifier import ONNXResnet18StaticGestureClassifier
+from MVP.onnx_networks.models.onnx_resnet18_static_gesture_classifier import (
+    ONNXResnet18StaticGestureClassifier,
+)
 
 T = TypeVar("T")
 
