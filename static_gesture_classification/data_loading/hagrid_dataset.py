@@ -40,6 +40,8 @@ HAGRID_GESTURES_MAPPING: Dict[str, StaticGesture] = {
 
 
 class HagridDataset(ReadMetaDataset):
+    """Dataset for parsing hagrid dataset https://github.com/hukenovs/hagrid"""
+
     def __init__(self, image_folder: str, json_file: str) -> None:
         self.meta_items: List[Dict] = self._prepare_meta(
             image_folder=image_folder, json_file=json_file

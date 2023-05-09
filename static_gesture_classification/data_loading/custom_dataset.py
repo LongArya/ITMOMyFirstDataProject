@@ -9,6 +9,8 @@ from PIL import Image
 
 
 class CustomRecordDataset(ReadMetaDataset):
+    """Dataset for parsing custom data"""
+
     def __init__(self, custom_record: CustomStaticGestureRecord) -> None:
         self._record: CustomStaticGestureRecord = custom_record
         self._bbox = self._record.meta_xyxy_box

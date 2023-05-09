@@ -9,6 +9,8 @@ from static_gesture_classification.static_gesture import StaticGesture
 
 @dataclass
 class CustomStaticGestureRecord:
+    """Dataclass that defines directory structure of custom data record"""
+
     root_folder: str
 
     def __post_init__(self) -> None:

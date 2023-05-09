@@ -24,7 +24,7 @@ class TrainHyperparameters:
     learinig_rate: float
     momentun: float
     scheduler_type: str
-    # optimizer_type: str  # TODO add later
+    # optimizer_type: str
     patience_epochs_num: int
     lr_reduction_factor: float
     loss: str
@@ -39,6 +39,8 @@ class ModelConfig:
 
 @dataclass
 class StaticGestureConfig:
+    """Schema that defines config parameters for static gesture classifier training"""
+
     augs: AugsConfig
     train_hyperparams: TrainHyperparameters
     model: ModelConfig

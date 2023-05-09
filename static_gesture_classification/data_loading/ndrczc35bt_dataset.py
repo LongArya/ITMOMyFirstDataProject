@@ -77,6 +77,8 @@ class NdrczczDatasetMetaResolver(ReadMetaDataset):
 
 
 class NdrczcDataset(ReadMetaDataset):
+    """Class for parsing Ndrczc dataset (HANDS dataset) https://www.sciencedirect.com/science/article/pii/S2352340921000755"""
+
     def __init__(self, meta_table: NdrczcMarkupTable) -> None:
         self.meta_table = meta_table
 

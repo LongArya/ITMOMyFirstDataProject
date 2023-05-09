@@ -31,6 +31,7 @@ import torchvision.transforms as tf
 
 
 def init_static_gesture_classifier(cfg: StaticGestureConfig) -> nn.Module:
+    """Initializes neural network for static gesture classification, based on config values"""
     if cfg.model.architecture == "resnet18":
         model = resnet18(pretrained=cfg.model.use_pretrained)
         model.fc = nn.Linear(model.fc.in_features, len(StaticGesture))
@@ -40,6 +41,7 @@ def init_static_gesture_classifier(cfg: StaticGestureConfig) -> nn.Module:
 
 
 def init_lr_scheduler(optimizer, cfg: StaticGestureConfig) -> Optional[nn.Module]:
+    """Initialized learning rate scheduler based on config values"""
     if cfg.train_hyperparams.scheduler_type == "plateau":
         scheduler = lr_scheduler.ReduceLROnPlateau(
             optimizer=optimizer,
@@ -55,6 +57,7 @@ def init_lr_scheduler(optimizer, cfg: StaticGestureConfig) -> Optional[nn.Module
 
 
 def init_classification_results_dataframe() -> ClassificationResultsDataframe:
+    """Inits dataframe that is used for saving ground true and predicted values on classification dataset"""
     return pd.DataFrame(
         columns=["image_path", "ground_true", "prediction", "prediction_score"]
         + [gesture.name for gesture in StaticGesture]
@@ -64,7 +67,7 @@ def init_classification_results_dataframe() -> ClassificationResultsDataframe:
 def init_augmentations_from_config(
     augs_cfg: AugsConfig,
 ) -> Dict[DataSplit, Callable[[Image.Image], torch.Tensor]]:
-    """Inits augmentations for each"""
+    """Inits augmentations for each data_split based on config values"""
     resize = tf.Resize(augs_cfg.input_resolution)
     normalization = tf.Compose(
         [
@@ -104,6 +107,7 @@ def init_augmentations_from_config(
 
 
 def init_loss_from_config(train_config: TrainHyperparameters) -> Optional[nn.Module]:
+    """Initializes loss function based on config values"""
     if train_config.loss == "cross-entropy":
         return nn.CrossEntropyLoss()
     elif train_config.loss == "focal":
@@ -115,6 +119,8 @@ def init_loss_from_config(train_config: TrainHyperparameters) -> Optional[nn.Mod
 
 
 class StaticGestureClassifier(pl.LightningModule):
+    """Lightning module for training static gesture classification"""
+
     def __init__(
         self,
         cfg: StaticGestureConfig,
@@ -161,6 +167,7 @@ class StaticGestureClassifier(pl.LightningModule):
         images_paths: List[str],
         split: DataSplit,
     ):
+        """Saves predictions and corresponding ground true in the form of dataframe"""
         softmax = nn.Softmax(dim=1)
         probs = softmax(logits)
         pred_classes = torch.argmax(probs, dim=1, keepdim=True)
@@ -233,7 +240,7 @@ class StaticGestureClassifier(pl.LightningModule):
         classification_results: ClassificationResultsDataframe,
         log_path: str,
     ) -> None:
-        """"""
+        """Uploads confusion matrix to neptune"""
         fig, ax = plt.subplots()
         ax = generate_confusion_matrix_plot_from_classification_results(
             classification_results, ax
@@ -244,7 +251,7 @@ class StaticGestureClassifier(pl.LightningModule):
     def _log_validation_metrics(
         self, val_predictions: ClassificationResultsDataframe
     ) -> None:
-        """"""
+        """Logs metrics on validation dataset"""
         # log confusion matrix
         conf_matrix_neptune_path = (
             f"val/figures/confusion_matrices/{self.current_epoch:04d}"

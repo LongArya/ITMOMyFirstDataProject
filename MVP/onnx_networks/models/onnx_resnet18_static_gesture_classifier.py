@@ -9,6 +9,8 @@ from scipy.special import softmax
 
 
 class ONNXResnet18StaticGestureClassifier:
+    """Class for encapsulating inference of resnet18 trained for static gesture classification via ONNX"""
+
     def __init__(self, model_path: str):
         self.ort_sess = onnxruntime.InferenceSession(
             model_path, providers=["CUDAExecutionProvider"]

@@ -19,7 +19,7 @@ from MVP.onnx_networks.models.onnx_resnet18_static_gesture_classifier import (
 from MVP.game_core import GameCore
 
 
-def run_mvp():
+def run_mvp() -> None:
     window = arcade.Window(SCREEN_WIDTH, SCREEN_HEIGHT, "Demo")
     yolo_hand_detector = YoloInferece(
         model_path=YOLO_V7_ONNX_HAND_DETECTION,

@@ -168,7 +168,6 @@ class MathQuestionView(arcade.View):
         selected_menu_option: Optional[str] = self.menu_options_tracker.active_option
         if selected_menu_option == "end_game":
             self.game_manager.end_game()
-        # TODO switch state
 
 
 from MVP.math_trivia_game.math_trivia_game_manager import MathTriviaGameManager

@@ -9,6 +9,8 @@ def letterbox(
     new_shape=(640, 640),
     color=(114, 114, 114),
 ):
+    """Implementation of letterbox transformation, image is resized without changing aspect ratio,
+    and padded in order to gain the desired output resolution"""
     # Resize and pad image while meeting stride-multiple constraints
     shape = img.shape[:2]  # current shape [height, width]
     if isinstance(new_shape, int):
@@ -40,6 +42,7 @@ def scale_boxes_to_original_image_space(
     xyxy_boxes: np.ndarray,
     orig_image_hw_shape: Tuple[int, int],
 ) -> np.ndarray:
+    """Scales boxes from coordinates of letterboxed image to original image coordinates"""
     gain = min(
         input_img_hw_shape[0] / orig_image_hw_shape[0],
         input_img_hw_shape[1] / orig_image_hw_shape[1],
@@ -63,9 +66,11 @@ def clip_coords(xyxy_boxes, img_shape_hw):
 
 
 class YoloInferece:
+    """Class for encapsulating inference of YoloV7 model via ONNX"""
+
     def __init__(self, model_path: str, input_resolution: Tuple[int, int]):
         self.ort_sess = onnxruntime.InferenceSession(
-            model_path, providers=["CUDAExecutionProvider"]
+            model_path, providers=["CPUExecutionProvider"]
         )
         self.input_resolution = input_resolution
 
