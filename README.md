@@ -1,5 +1,17 @@
 Реализация ITMO проекта MyFirstDataProject
 
+# Инструкция по запуску приложения
+
+```
+git clone https://github.com/LongArya/ITMOMyFirstDataProject.git
+cd ITMOMyFirstDataProject 
+docker build -t itmo_mvp .
+docker run -it --device=/dev/video0:/dev/video0 -v /tmp/.X11-unix:/tmp/.X11-unix -e DISPLAY=$DISPLAY --network host itmo_mvp bash
+python3 ./mvp_entry_point.py
+```
+
+# Описание модулей приложения
+
 Основная инфомация находится в файле report4.pdf
 
 Ссылка на neptune проект с логами экспериментов:
