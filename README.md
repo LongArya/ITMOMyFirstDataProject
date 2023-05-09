@@ -52,26 +52,26 @@ python3 ./mvp_entry_point.py
 + Датасет [hagrid](https://github.com/hukenovs/hagrid)
 + Самостоятельно сгенерированные данные, для покрытия некоторых ракурсов
 
-Итоговая валидационная выборка составила 9918 семплов жестов, распределение жестов в валидационной выборке:  
+Итоговая валидационная выборка составила 9918 семплов жестов, распределение жестов в валидационной выборке:
 
-<Details>  
+<Details>
 
 ![plot](itmo_reports/readme_resourses/val_distribution.png)
 
-</Details>  
+</Details>
 
 ### Эксперименты
 
 В ходе работы расширялся набор данных для покрытия ошибок, также для борьбы с неравномерным распределением классов в обучающей выборке использовалась функция ошибки Focal loss, с различными значениями параметра $\gamma$. Запуски с Focall loss в neptune отмечены тегом loss_focal. Для оценки моделей использовался взвешенный f1 score по классам.
 
 Наибольшее значении метрики weighted f1 score = 0.878495 было достигнуто в [этом](https://app.neptune.ai/longarya/StaticGestureClassification/runs/details?viewId=98f483ca-a116-4e81-b3b7-5c1077f3bd4f&detailsTab=metadata&shortId=STAT-91&type=run&lbViewUnpacked=true&sortBy=%5B%22training%2Fval_weighted_F1%22%5D&sortFieldType=%5B%22floatSeries%22%5D&sortFieldAggregationMode=%5B%22max%22%5D&sortDirection=%5B%22descending%22%5D&suggestionsEnabled=true&query=((%60sys%2Ftags%60%3AstringSet%20CONTAINS%20%22valid_run%22))) эксперименте на 49 эпохе.
-Далее представлена матрица ошибок  
+Далее представлена матрица ошибок
 
-<Details>  
+<Details>
 
-![plot](itmo_reports/readme_resourses/confusion_matrix.png)  
+![plot](itmo_reports/readme_resourses/confusion_matrix.png)
 
-</Details>  
+</Details>
 
 ### Воспроизводимость
 
@@ -79,20 +79,19 @@ python3 ./mvp_entry_point.py
 
 # Работа с приложением
 
-При запуске приложения открывается 2 окна, OpenCV превью веб камеры и игровое меню.  Управление осуществляется жестами активной руки, активной рукой считается самая верхняя. На превью OpenCV отрисовываются все детекции рук, при этом активная отмечена зеленым цветом, а остальные красным.  
+При запуске приложения открывается 2 окна, OpenCV превью веб камеры и игровое меню.  Управление осуществляется жестами активной руки, активной рукой считается самая верхняя. На превью OpenCV отрисовываются все детекции рук, при этом активная отмечена зеленым цветом, а остальные красным.
 
-<Details>  
+<Details>
 
-![plot](itmo_reports/readme_resourses/web_cam.png)  
+![plot](itmo_reports/readme_resourses/web_cam.png)
 
-</Details>  
+</Details>
 
-В игре в левом нижнем углу расположена миниатюра веб камеры, с пиктограмой жеста активной руки (область выделенная красным).  
+В игре в правом нижнем углу расположена миниатюра веб камеры, с пиктограмой жеста активной руки (область выделенная красным).
 
-<Details>  
+<Details>
 
-![plot](itmo_reports/readme_resourses/web_cam_demp.png)  
-</Details>  
-
+![plot](itmo_reports/readme_resourses/web_cam_demp.png)
+`</Details>`
 
 Для выбора игры зажмите активную ладонь в кулак и двигая ей переместите курсор на карточку с выбранной игрой, а затем разожмите кулак.
