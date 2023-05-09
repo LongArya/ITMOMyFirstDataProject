@@ -5,7 +5,7 @@
 Для запуска приложения необходима камера
 
 ```bash
-git clone https://github.com/LongAryaITMOMyFirstDataProject.git
+git clone https://github.com/LongArya/ITMOMyFirstDataProject.git
 cd ITMOMyFirstDataProject
 xhost +local:* 
 docker build -t itmo_mvp .
